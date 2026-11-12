@@ -18,6 +18,7 @@ DEFAULT_PORTS = {
     "CONSOLE_PORT": "8088",
 }
 APP_IMAGES = (
+    "relialoop/agent:v1",
     "relialoop/gateway:v1",
     "relialoop/loadgen:v1",
     "relialoop/orders:v1",
