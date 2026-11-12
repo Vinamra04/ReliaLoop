@@ -1,0 +1,172 @@
+# Evidence catalog: named, parameterised PromQL queries.
+#
+# The agent only ever runs queries from this file. An LLM can ask for an entry
+# by name; it can never supply PromQL of its own. `$service` is replaced by a
+# service name that has been validated against the CMDB.
+#
+# Fields:
+#   expr         PromQL template
+#   unit         unit of the value
+#   window       time window the value describes (informational)
+#   core         true = collected for every incident; false = only on request
+#   services     optional list: only collected for these services
+#   expand_by    optional labels: one evidence item per series, id suffixed with the label values
+#   value_label  optional: use this label's value (text) instead of the sample value
+#   description  what it means (shown to humans and to the LLM)
+
+queries:
+  err_ratio_1m:
+    expr: '(sum(rate(http_requests_total{service="$service", status=~"5..", route!~"/healthz|/readyz|/metrics|/chaos.*"}[1m])) or vector(0)) / sum(rate(http_requests_total{service="$service", route!~"/healthz|/readyz|/metrics|/chaos.*"}[1m]))'
+    unit: ratio
+    window: 1m
+    core: true
+    description: Share of API requests answered with 5xx over the last minute.
+
+  err_ratio_5m:
+    expr: '(sum(rate(http_requests_total{service="$service", status=~"5..", route!~"/healthz|/readyz|/metrics|/chaos.*"}[5m])) or vector(0)) / sum(rate(http_requests_total{service="$service", route!~"/healthz|/readyz|/metrics|/chaos.*"}[5m]))'
+    unit: ratio
+    window: 5m
+    core: true
+    description: Share of API requests answered with 5xx over the last 5 minutes.
+
+  p99_latency_1m:
+    expr: 'histogram_quantile(0.99, sum by (le) (rate(http_request_duration_seconds_bucket{service="$service", route!~"/healthz|/readyz|/metrics|/chaos.*"}[1m])))'
+    unit: seconds
+    window: 1m
+    core: true
+    description: 99th percentile API request duration over the last minute.
+
+  request_rate_1m:
+    expr: 'sum(rate(http_requests_total{service="$service", route!~"/healthz|/readyz|/metrics|/chaos.*"}[1m]))'
+    unit: requests_per_second
+    window: 1m
+    core: true
+    description: API requests per second now.
+
+  request_rate_baseline:
+    expr: 'sum(rate(http_requests_total{service="$service", route!~"/healthz|/readyz|/metrics|/chaos.*"}[1m] offset 10m))'
+    unit: requests_per_second
+    window: 1m offset 10m
+    core: true
+    description: API requests per second 10 minutes ago (the recent baseline).
+
+  in_flight:
+    expr: 'sum(http_requests_in_flight{service="$service"})'
+    unit: requests
+    core: true
+    description: Requests being handled right now, summed over instances.
+
+  worker_utilization:
+    expr: 'avg(orders_worker_utilization{service="$service"})'
+    unit: ratio
+    window: 5s
+    core: true
+    services: [orders]
+    description: Share of busy worker slots averaged over replicas; 0.9 or more is saturated.
+
+  rss_bytes:
+    expr: 'max(process_resident_memory_bytes{service="$service"})'
+    unit: bytes
+    core: true
+    description: Resident memory of the largest instance.
+
+  rss_pct_of_limit:
+    expr: 'max(process_resident_memory_bytes{service="$service"}) / on () group_left () max(service:memory_limit:bytes{service="$service"})'
+    unit: ratio
+    core: true
+    description: Resident memory of the largest instance as a share of the container memory limit.
+
+  rss_slope_1m:
+    expr: 'max(deriv(process_resident_memory_bytes{service="$service"}[1m]))'
+    unit: bytes_per_second
+    window: 1m
+    core: true
+    description: Memory growth rate over the last minute; steadily positive suggests a leak.
+
+  restarts_5m:
+    expr: 'sum(changes(process_start_time_seconds{service="$service"}[5m]))'
+    unit: count
+    window: 5m
+    core: true
+    description: Process restarts observed in the last 5 minutes.
+
+  replicas_up:
+    expr: 'count(up{service="$service"} == 1) or vector(0)'
+    unit: count
+    core: true
+    description: Instances that answered their last scrape.
+
+  version:
+    expr: 'count by (version) (service_build_info{service="$service"})'
+    unit: version
+    core: true
+    value_label: version
+    description: Release version reported by the running instances.
+
+  burn_rate_2m:
+    expr: 'slo:burn_rate:ratio_2m{service="$service"}'
+    unit: burn_rate
+    window: 2m
+    core: true
+    expand_by: [slo]
+    description: Error-budget burn rate over 2 minutes per SLO; above 14.4 on both fast windows pages.
+
+  budget_remaining:
+    expr: 'slo:error_budget_remaining:ratio{service="$service"}'
+    unit: ratio
+    core: true
+    expand_by: [slo]
+    description: Error budget left per SLO (1 = untouched, 0 = spent, negative = overspent).
+
+  alert_firing:
+    expr: 'count by (alertname) (ALERTS{alertstate="firing", service="$service"})'
+    unit: count
+    core: true
+    expand_by: [alertname]
+    description: Alerts currently firing for the service.
+
+  # --- optional: collected only when a diagnosis asks for them ---------------
+
+  rss_slope_5m:
+    expr: 'max(deriv(process_resident_memory_bytes{service="$service"}[5m]))'
+    unit: bytes_per_second
+    window: 5m
+    core: false
+    description: Memory growth rate over 5 minutes; separates a real leak from a short step.
+
+  db_pool_usage:
+    expr: 'sum(orders_db_pool_in_use{service="$service"}) / sum(orders_db_pool_size{service="$service"})'
+    unit: ratio
+    core: false
+    services: [orders]
+    description: Share of open database connections in use; near 1 for long means slow queries.
+
+  queue_wait_p95:
+    expr: 'histogram_quantile(0.95, sum by (le) (rate(orders_queue_wait_seconds_bucket{service="$service"}[1m])))'
+    unit: seconds
+    window: 1m
+    core: false
+    services: [orders]
+    description: 95th percentile time a request waited for a worker slot.
+
+  cpu_usage:
+    expr: 'max(rate(process_cpu_seconds_total{service="$service"}[1m]))'
+    unit: cores
+    window: 1m
+    core: false
+    description: CPU cores used by the busiest instance.
+
+  status_breakdown_1m:
+    expr: 'sum by (status) (rate(http_requests_total{service="$service", status=~"5..", route!~"/healthz|/readyz|/metrics|/chaos.*"}[1m]))'
+    unit: requests_per_second
+    window: 1m
+    core: false
+    expand_by: [status]
+    description: 5xx responses per second by status code (502 upstream error, 503 shed, 504 timeout).
+
+  err_ratio_baseline:
+    expr: '(sum(rate(http_requests_total{service="$service", status=~"5..", route!~"/healthz|/readyz|/metrics|/chaos.*"}[1m] offset 10m)) or vector(0)) / sum(rate(http_requests_total{service="$service", route!~"/healthz|/readyz|/metrics|/chaos.*"}[1m] offset 10m))'
+    unit: ratio
+    window: 1m offset 10m
+    core: false
+    description: Share of 5xx responses 10 minutes ago.
