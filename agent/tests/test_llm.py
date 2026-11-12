@@ -229,7 +229,7 @@ async def test_output_that_violates_the_schema_falls_back_to_rules(bad):
 
 @pytest.mark.parametrize("kind", [RATE_LIMITED, SERVER_ERROR, TIMEOUT])
 async def test_transient_errors_are_retried_with_backoff(kind: str):
-    rig = LlmRig(LLMError(kind), LLMError(kind), answer())
+    rig = LlmRig(LLMError(kind), LLMError(kind), answer(), llm_max_attempts=3)
     rig.error_spike()
     record, _ = await rig.diagnose()
     assert (record.mode, record.degraded_mode, record.llm_calls) == ("llm", False, 3)
@@ -238,13 +238,27 @@ async def test_transient_errors_are_retried_with_backoff(kind: str):
 
 
 async def test_persistent_outage_falls_back_after_bounded_attempts():
-    rig = LlmRig(*[LLMError(TIMEOUT) for _ in range(10)])
+    rig = LlmRig(*[LLMError(TIMEOUT) for _ in range(10)], llm_max_attempts=3)
     rig.error_spike()
     record, _ = await rig.diagnose()
     assert (record.mode, record.degraded_mode) == ("rules", True)
     assert record.fallback_reason == "llm_error:timeout"
     assert len(rig.llm.calls) == 3
     assert len(rig.llm.responses) == 7
+
+
+async def test_default_is_two_attempts_per_call():
+    """One retry by default: a hung provider must not hold an incident for long."""
+    rig = LlmRig(LLMError(SERVER_ERROR), answer())
+    rig.error_spike()
+    record, _ = await rig.diagnose()
+    assert (record.mode, record.llm_calls) == ("llm", 2)
+
+    failing = LlmRig(*[LLMError(SERVER_ERROR) for _ in range(5)])
+    failing.error_spike()
+    record, _ = await failing.diagnose()
+    assert (record.mode, record.degraded_mode) == ("rules", True)
+    assert len(failing.llm.calls) == 2
 
 
 @pytest.mark.parametrize("kind", [AUTH, BAD_REQUEST, UNAVAILABLE])
@@ -257,7 +271,13 @@ async def test_permanent_errors_are_not_retried(kind: str):
 
 
 async def test_retries_count_against_the_per_incident_call_budget():
-    rig = LlmRig(answer(need=("db_pool_usage",)), LLMError(TIMEOUT), LLMError(TIMEOUT), answer())
+    rig = LlmRig(
+        answer(need=("db_pool_usage",)),
+        LLMError(TIMEOUT),
+        LLMError(TIMEOUT),
+        answer(),
+        llm_max_attempts=3,
+    )
     rig.error_spike()
     record, _ = await rig.diagnose()
     assert (record.mode, record.degraded_mode) == ("rules", True)
