@@ -1,0 +1,92 @@
+# Unit tests for the generated latency burn-rate alerts (demo profile).
+# Latency SLOs are 95%, so the budget is 5% and the highest possible burn rate
+# is 20. The fast-burn alert (14.4x) needs more than 72% of requests to be slow.
+rule_files:
+  - ../rules/generated/gateway-latency.yml
+  - ../rules/generated/orders-latency.yml
+
+evaluation_interval: 5s
+
+tests:
+  - name: fast burn pages when all gateway requests exceed 500 ms
+    interval: 5s
+    input_series:
+      # From t=5m no request finishes within 0.5 s: the le="0.5" bucket stops growing.
+      - series: 'http_request_duration_seconds_bucket{service="gateway", method="GET", route="/api/orders", le="0.5"}'
+        values: "0+100x60 6000x60"
+      - series: 'http_request_duration_seconds_count{service="gateway", method="GET", route="/api/orders"}'
+        values: "0+100x120"
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: SLOBurnRateFast
+        exp_alerts: []
+      # 75 s of slow requests is about 65% of the 2 m window: below the 72% threshold.
+      - eval_time: 6m15s
+        alertname: SLOBurnRateFast
+        exp_alerts: []
+      # 90 s of slow requests is about 75% of the window: above it.
+      - eval_time: 6m30s
+        alertname: SLOBurnRateFast
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              class: symptom
+              slo: gateway-latency
+              service: gateway
+              sli_type: latency
+              burn: fast
+              owner: platform-team
+            exp_annotations:
+              summary: "gateway-latency: error budget burning at more than 14.4x (2m/30s windows)"
+              description: "Share of gateway API requests answered within 500 ms. Objective 95%. The bad-event ratio exceeded 72% over both the last 2m and the last 30s. The whole error budget would be gone in a small fraction of the window: act now."
+              runbook_url: http://localhost:8080/runbooks/gateway-latency
+              dashboard_url: http://localhost:3000/d/relialoop-slo/slo-and-error-budget?var-slo=gateway-latency
+    promql_expr_test:
+      - expr: slo:burn_rate:ratio_30s{slo="gateway-latency"}
+        eval_time: 6m
+        exp_samples:
+          - labels: 'slo:burn_rate:ratio_30s{slo="gateway-latency", service="gateway"}'
+            value: 20
+      # The slow-burn page (6x) needs more than 30% slow over 6 m: about 108 s, plus `for: 10s`.
+      - expr: count(ALERTS{alertname="SLOBurnRateSlow", slo="gateway-latency", alertstate="firing"})
+        eval_time: 6m30s
+        exp_samples: []
+      - expr: count(ALERTS{alertname="SLOBurnRateSlow", slo="gateway-latency", alertstate="firing"})
+        eval_time: 7m10s
+        exp_samples:
+          - labels: "{}"
+            value: 1
+
+  - name: 4 percent slow requests stay within the 5 percent budget
+    interval: 5s
+    input_series:
+      - series: 'http_request_duration_seconds_bucket{service="gateway", method="GET", route="/api/orders", le="0.5"}'
+        values: "0+96x240"
+      - series: 'http_request_duration_seconds_count{service="gateway", method="GET", route="/api/orders"}'
+        values: "0+100x240"
+    promql_expr_test:
+      - expr: count(ALERTS{slo="gateway-latency"})
+        eval_time: 20m
+        exp_samples: []
+      # 4% bad against a 5% budget: burn rate 0.8, so 20% of the budget remains.
+      - expr: round(slo:error_budget_remaining:ratio{slo="gateway-latency"}, 0.001)
+        eval_time: 20m
+        exp_samples:
+          - labels: '{slo="gateway-latency", service="gateway"}'
+            value: 0.2
+
+  - name: orders latency uses the 300 ms bucket
+    interval: 5s
+    input_series:
+      - series: 'http_request_duration_seconds_bucket{service="orders", method="GET", route="/orders", le="0.3"}'
+        values: "0+100x60 6000x60"
+      - series: 'http_request_duration_seconds_bucket{service="orders", method="GET", route="/orders", le="0.5"}'
+        values: "0+100x120"
+      - series: 'http_request_duration_seconds_count{service="orders", method="GET", route="/orders"}'
+        values: "0+100x120"
+    promql_expr_test:
+      - expr: count by (slo, sli_type) (ALERTS{alertname="SLOBurnRateFast", alertstate="firing"})
+        eval_time: 6m30s
+        exp_samples:
+          - labels: '{slo="orders-latency", sli_type="latency"}'
+            value: 1

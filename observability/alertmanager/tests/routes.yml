@@ -1,0 +1,33 @@
+# Routing expectations, checked with `amtool config routes test` by
+# `python -m tools.cli test-rules`.
+cases:
+  - name: fast-burn page goes to the agent
+    labels: {alertname: SLOBurnRateFast, severity: page, class: symptom, service: gateway, slo: gateway-availability}
+    receiver: agent-pages
+  - name: slow-burn page goes to the agent
+    labels: {alertname: SLOBurnRateSlow, severity: page, class: symptom, service: orders, slo: orders-latency}
+    receiver: agent-pages
+  - name: service down pages the agent
+    labels: {alertname: ServiceDown, severity: page, class: symptom, service: orders}
+    receiver: agent-pages
+  - name: predicted memory exhaustion pages the agent
+    labels: {alertname: MemoryExhaustionPredicted, severity: page, class: cause, service: gateway}
+    receiver: agent-pages
+  - name: ticket-level burn becomes a ticket
+    labels: {alertname: SLOBurnRateTicket, severity: ticket, class: symptom, service: gateway, slo: gateway-availability}
+    receiver: tickets
+  - name: crash loop becomes a ticket
+    labels: {alertname: CrashLoop, severity: ticket, class: cause, service: orders}
+    receiver: tickets
+  - name: saturation becomes a ticket
+    labels: {alertname: SaturationHigh, severity: ticket, class: cause, service: orders}
+    receiver: tickets
+  - name: watchdog is dropped
+    labels: {alertname: Watchdog, severity: none, class: meta, service: prometheus}
+    receiver: "null"
+  - name: watchdog is dropped even if mislabelled as a page
+    labels: {alertname: Watchdog, severity: page}
+    receiver: "null"
+  - name: an alert without severity is dropped
+    labels: {alertname: Unlabelled, service: gateway}
+    receiver: "null"

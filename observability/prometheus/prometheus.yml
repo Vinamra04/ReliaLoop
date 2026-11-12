@@ -5,6 +5,18 @@ global:
   scrape_timeout: 4s
   evaluation_interval: 5s
 
+rule_files:
+  - rules/generated/*.yml
+  - rules/handwritten/*.yml
+
+alerting:
+  alertmanagers:
+    - dns_sd_configs:
+        - names: [alertmanager]
+          type: A
+          port: 9093
+          refresh_interval: 5s
+
 # Every job discovers targets through DNS A records, so replicas that share a
 # network alias are scraped automatically. Application metrics carry no
 # `service` label; it is attached here.
@@ -45,3 +57,23 @@ scrape_configs:
     relabel_configs:
       - target_label: service
         replacement: prometheus
+
+  - job_name: alertmanager
+    dns_sd_configs:
+      - names: [alertmanager]
+        type: A
+        port: 9093
+        refresh_interval: 5s
+    relabel_configs:
+      - target_label: service
+        replacement: alertmanager
+
+  - job_name: agent
+    dns_sd_configs:
+      - names: [agent]
+        type: A
+        port: 8080
+        refresh_interval: 5s
+    relabel_configs:
+      - target_label: service
+        replacement: agent

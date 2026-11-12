@@ -1,0 +1,58 @@
+# Alertmanager: routing, grouping and inhibition. Explained in docs/alerting.md.
+global:
+  resolve_timeout: 1m
+
+route:
+  # Anything that matches no child route is dropped on purpose: every real
+  # alert carries severity=page or severity=ticket.
+  receiver: "null"
+  group_by: [service, slo]
+  group_wait: 5s # demo profile; production would use 30s
+  group_interval: 30s
+  repeat_interval: 30m
+  routes:
+    - receiver: "null"
+      matchers: ['alertname="Watchdog"']
+    - receiver: agent-pages
+      matchers: ['severity="page"']
+    - receiver: tickets
+      matchers: ['severity="ticket"']
+
+receivers:
+  - name: "null"
+
+  - name: agent-pages
+    webhook_configs:
+      - url: http://agent:8080/webhook/alertmanager
+        send_resolved: true
+        http_config:
+          authorization:
+            type: Bearer
+            credentials_file: /etc/alertmanager/secrets/webhook_token
+
+  - name: tickets
+    webhook_configs:
+      - url: http://agent:8080/webhook/ticket
+        send_resolved: true
+        http_config:
+          authorization:
+            type: Bearer
+            credentials_file: /etc/alertmanager/secrets/webhook_token
+
+inhibit_rules:
+  # 1. A page already covers the same SLO: do not also raise its ticket-level
+  #    burn alert. Limited to symptom alerts so cause alerts are never hidden.
+  - source_matchers: ['severity="page"']
+    target_matchers: ['severity="ticket"', 'class="symptom"']
+    equal: [service, slo]
+
+  # 2. A service that is down is obviously slow: suppress its latency burn alerts.
+  - source_matchers: ['alertname="ServiceDown"']
+    target_matchers: ['alertname=~"SLOBurnRate.*"', 'sli_type="latency"']
+    equal: [service]
+
+  # 3. One page per service: an availability page suppresses the latency page
+  #    for the same service.
+  - source_matchers: ['alertname=~"SLOBurnRate.*"', 'severity="page"', 'sli_type="availability"']
+    target_matchers: ['alertname=~"SLOBurnRate.*"', 'severity="page"', 'sli_type="latency"']
+    equal: [service]

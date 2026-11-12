@@ -1,0 +1,48 @@
+# Meta-monitoring: is the monitoring and alerting pipeline itself healthy?
+groups:
+  - name: pipeline-health
+    rules:
+      # Dead man's switch. Always firing; if it ever stops arriving at
+      # Alertmanager, the alerting pipeline is broken. Routed to a null
+      # receiver and checked by `python -m tools.cli verify-pipeline`.
+      - alert: Watchdog
+        expr: vector(1)
+        labels:
+          severity: none
+          class: meta
+          service: prometheus
+        annotations:
+          summary: Alerting pipeline heartbeat
+          description: >-
+            This alert always fires. Its presence in Alertmanager proves that rule
+            evaluation and alert delivery work end to end.
+          runbook_url: http://localhost:8080/runbooks/pipeline-health
+          dashboard_url: http://localhost:3000/d/relialoop-pipeline
+
+      - alert: PrometheusTargetDown
+        expr: up{service=~"prometheus|alertmanager|loadgen|agent"} == 0
+        for: 30s
+        labels:
+          severity: ticket
+          class: cause
+        annotations:
+          summary: "Prometheus cannot scrape {{ $labels.service }}"
+          description: >-
+            The {{ $labels.service }} target {{ $labels.instance }} has failed its scrape for
+            30 seconds. Its metrics, and any alert built on them, are blind until it returns.
+          runbook_url: http://localhost:8080/runbooks/pipeline-health
+          dashboard_url: http://localhost:3000/d/relialoop-pipeline
+
+      - alert: AlertmanagerNotificationsFailing
+        expr: sum by (service, integration) (rate(alertmanager_notifications_failed_total[5m])) > 0
+        for: 30s
+        labels:
+          severity: ticket
+          class: cause
+        annotations:
+          summary: "Alertmanager is failing to deliver {{ $labels.integration }} notifications"
+          description: >-
+            Alertmanager could not deliver notifications during the last 5 minutes. Pages may
+            not be reaching the agent. Check the agent's health and the webhook token.
+          runbook_url: http://localhost:8080/runbooks/pipeline-health
+          dashboard_url: http://localhost:3000/d/relialoop-pipeline

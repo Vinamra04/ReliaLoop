@@ -1,0 +1,193 @@
+# Unit tests for the handwritten alerts.
+# gateway and orders are the managed services (see rules/generated/cmdb.yml).
+rule_files:
+  - ../rules/generated/cmdb.yml
+  - ../rules/handwritten/services.yml
+  - ../rules/handwritten/pipeline.yml
+
+evaluation_interval: 5s
+
+tests:
+  - name: Watchdog always fires
+    interval: 5s
+    input_series: []
+    alert_rule_test:
+      - eval_time: 5s
+        alertname: Watchdog
+        exp_alerts:
+          - exp_labels:
+              severity: none
+              class: meta
+              service: prometheus
+            exp_annotations:
+              summary: Alerting pipeline heartbeat
+              description: This alert always fires. Its presence in Alertmanager proves that rule evaluation and alert delivery work end to end.
+              runbook_url: http://localhost:8080/runbooks/pipeline-health
+              dashboard_url: http://localhost:3000/d/relialoop-pipeline
+
+  - name: ServiceDown fires after 15 s without a healthy instance
+    interval: 5s
+    input_series:
+      - series: 'up{service="gateway", instance="g1"}'
+        values: "1x12 0x24"
+      - series: 'up{service="orders", instance="o1"}'
+        values: "1x36"
+      # An unmanaged service being down is not this alert's business.
+      - series: 'up{service="loadgen", instance="l1"}'
+        values: "0x36"
+    alert_rule_test:
+      - eval_time: 55s
+        alertname: ServiceDown
+        exp_alerts: []
+      - eval_time: 1m10s
+        alertname: ServiceDown
+        exp_alerts: []
+      - eval_time: 1m20s
+        alertname: ServiceDown
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              class: symptom
+              service: gateway
+            exp_annotations:
+              summary: gateway has no healthy instance
+              description: Prometheus has not scraped a single healthy instance of gateway for 15 seconds. Requests to it are failing.
+              runbook_url: http://localhost:8080/runbooks/service-down
+              dashboard_url: http://localhost:3000/d/relialoop-golden-signals?var-service=gateway
+
+  - name: ServiceDown also fires when the only instance vanishes from discovery
+    interval: 5s
+    input_series:
+      - series: 'up{service="gateway", instance="g1"}'
+        values: "1x36"
+      # A restarting container drops out of DNS: its series goes stale.
+      - series: 'up{service="orders", instance="o1"}'
+        values: "1x12 stale"
+    promql_expr_test:
+      - expr: count by (service) (ALERTS{alertname="ServiceDown", alertstate="firing"})
+        eval_time: 1m25s
+        exp_samples:
+          - labels: '{service="orders"}'
+            value: 1
+
+  - name: ServiceDown stays quiet while one of two replicas is up
+    interval: 5s
+    input_series:
+      - series: 'up{service="gateway", instance="g1"}'
+        values: "1x36"
+      - series: 'up{service="orders", instance="o1"}'
+        values: "1x12 0x24"
+      - series: 'up{service="orders", instance="o2"}'
+        values: "1x36"
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: ServiceDown
+        exp_alerts: []
+
+  - name: CrashLoop fires on the second restart within 2 minutes, not on a single restart
+    interval: 5s
+    input_series:
+      # orders restarts at 1m, 1m10s and 1m20s; gateway restarts once at 1m.
+      - series: 'process_start_time_seconds{service="orders", instance="o1"}'
+        values: "100x11 160x1 170x1 180x40"
+      - series: 'process_start_time_seconds{service="gateway", instance="g1"}'
+        values: "100x11 160x40"
+    promql_expr_test:
+      - expr: count by (service, severity, class) (ALERTS{alertname="CrashLoop", alertstate="firing"})
+        eval_time: 1m
+        exp_samples: []
+      - expr: count by (service, severity, class) (ALERTS{alertname="CrashLoop", alertstate="firing"})
+        eval_time: 1m30s
+        exp_samples:
+          - labels: '{service="orders", severity="ticket", class="cause"}'
+            value: 1
+      # Two minutes after the last restart the alert clears.
+      - expr: count(ALERTS{alertname="CrashLoop"})
+        eval_time: 3m30s
+        exp_samples: []
+
+  - name: MemoryExhaustionPredicted fires for a steady 1 MiB/s leak
+    interval: 5s
+    input_series:
+      # 60 MiB flat for 2 minutes, then +1 MiB/s (5 MiB per sample). Limit is 192 MiB.
+      - series: 'process_resident_memory_bytes{service="gateway", instance="g1"}'
+        values: "62914560x24 68157440+5242880x30"
+      - series: 'process_resident_memory_bytes{service="orders", instance="o1"}'
+        values: "62914560x60"
+    promql_expr_test:
+      - expr: count(ALERTS{alertname="MemoryExhaustionPredicted", alertstate="firing"})
+        eval_time: 2m30s
+        exp_samples: []
+      - expr: count by (service, instance, severity, class) (ALERTS{alertname="MemoryExhaustionPredicted", alertstate="firing"})
+        eval_time: 3m15s
+        exp_samples:
+          - labels: '{service="gateway", instance="g1", severity="page", class="cause"}'
+            value: 1
+
+  - name: MemoryExhaustionPredicted ignores a normal start-up ramp
+    interval: 5s
+    input_series:
+      # 10 MiB to 60 MiB in 10 s (5 MiB/s), then flat: steep, but far below 60% of the limit.
+      - series: 'process_resident_memory_bytes{service="orders", instance="o1"}'
+        values: "10485760 36700160 62914560x40"
+    promql_expr_test:
+      - expr: count(ALERTS{alertname="MemoryExhaustionPredicted"})
+        eval_time: 15s
+        exp_samples: []
+      - expr: count(ALERTS{alertname="MemoryExhaustionPredicted"})
+        eval_time: 1m
+        exp_samples: []
+
+  - name: SaturationHigh needs 30 s above 90 percent averaged over replicas
+    interval: 5s
+    input_series:
+      - series: 'orders_worker_utilization{service="orders", instance="o1"}'
+        values: "0.3x12 0.97x24"
+      - series: 'orders_worker_utilization{service="orders", instance="o2"}'
+        values: "0.3x12 0.95x12 0.5x12"
+    promql_expr_test:
+      - expr: count(ALERTS{alertname="SaturationHigh", alertstate="firing"})
+        eval_time: 1m25s
+        exp_samples: []
+      - expr: count by (service, severity, class) (ALERTS{alertname="SaturationHigh", alertstate="firing"})
+        eval_time: 1m40s
+        exp_samples:
+          - labels: '{service="orders", severity="ticket", class="cause"}'
+            value: 1
+      # Once the second replica drops to 0.5 the average is 0.735: resolved.
+      - expr: count(ALERTS{alertname="SaturationHigh"})
+        eval_time: 2m30s
+        exp_samples: []
+
+  - name: PrometheusTargetDown covers pipeline components only
+    interval: 5s
+    input_series:
+      - series: 'up{service="alertmanager", instance="a1"}'
+        values: "1x6 0x30"
+      - series: 'up{service="orders", instance="o1"}'
+        values: "1x6 0x30"
+      - series: 'up{service="gateway", instance="g1"}'
+        values: "1x36"
+    promql_expr_test:
+      - expr: count by (service) (ALERTS{alertname="PrometheusTargetDown", alertstate="firing"})
+        eval_time: 1m30s
+        exp_samples:
+          - labels: '{service="alertmanager"}'
+            value: 1
+
+  - name: AlertmanagerNotificationsFailing fires on failed deliveries
+    interval: 5s
+    input_series:
+      - series: 'alertmanager_notifications_failed_total{service="alertmanager", integration="webhook"}'
+        values: "0x12 1+1x24"
+      - series: 'alertmanager_notifications_failed_total{service="alertmanager", integration="email"}'
+        values: "0x36"
+    promql_expr_test:
+      - expr: count(ALERTS{alertname="AlertmanagerNotificationsFailing", alertstate="firing"})
+        eval_time: 55s
+        exp_samples: []
+      - expr: count by (integration, severity) (ALERTS{alertname="AlertmanagerNotificationsFailing", alertstate="firing"})
+        eval_time: 2m
+        exp_samples:
+          - labels: '{integration="webhook", severity="ticket"}'
+            value: 1

@@ -13,10 +13,13 @@ from typing import Any
 
 import httpx
 import typer
+import yaml
 from rich.console import Console
 
-from tools import init_env, paths, stack
+from tools import containers, init_env, paths, stack
 from tools.dashboards import generate as dashboard_generator
+from tools.slo import build as slo_build
+from tools.slo.models import SpecError
 
 app = typer.Typer(
     name="relialoop",
@@ -26,6 +29,8 @@ app = typer.Typer(
 )
 dashboards_app = typer.Typer(help="Grafana dashboards as code.", no_args_is_help=True)
 app.add_typer(dashboards_app, name="dashboards")
+slo_app = typer.Typer(help="SLOs as code: generate and validate rules.", no_args_is_help=True)
+app.add_typer(slo_app, name="slo")
 console = Console()
 
 HTTP_TIMEOUT_S = 10.0
@@ -232,6 +237,90 @@ def traffic(
         headers={"X-Loadgen-Token": env["LOADGEN_TOKEN"]},
     )
     console.print_json(json.dumps(result))
+
+
+def _relative(path: Any) -> str:
+    return str(path.relative_to(paths.REPO_ROOT).as_posix())
+
+
+def _report(name: str, result: containers.ToolResult) -> bool:
+    """Print one check's outcome; return whether it passed."""
+    if result.ok:
+        console.print(f"[green]ok[/green]    {name}")
+    else:
+        console.print(f"[red]FAIL[/red]  {name}")
+        console.print(result.output, markup=False, highlight=False)
+    return result.ok
+
+
+@slo_app.command("generate")
+def slo_generate(
+    check: bool = typer.Option(False, "--check", help="Fail if generated files are stale."),
+) -> None:
+    """Generate Prometheus rules, the SLO JSON schema and docs/slo-design.md from slo/*.yaml."""
+    try:
+        if check:
+            stale = slo_build.stale()
+            if stale:
+                names = ", ".join(_relative(path) for path in stale)
+                raise _fail(f"stale generated files: {names} (run `slo generate`)")
+            console.print("generated SLO files are up to date")
+            return
+        changed = slo_build.write_all()
+    except SpecError as exc:
+        raise _fail(str(exc)) from exc
+    if changed:
+        for path in changed:
+            console.print(f"updated {_relative(path)}")
+    else:
+        console.print("generated SLO files already up to date")
+
+
+@slo_app.command("validate")
+def slo_validate() -> None:
+    """Validate the specs, check generated files are current and run promtool checks."""
+    try:
+        stale = slo_build.stale()
+    except SpecError as exc:
+        raise _fail(str(exc)) from exc
+    console.print("[green]ok[/green]    SLO specs match the schema")
+    if stale:
+        raise _fail(f"stale generated files: {', '.join(_relative(path) for path in stale)}")
+    console.print("[green]ok[/green]    generated files are up to date")
+    rule_files = containers.relative_files(paths.PROMETHEUS_DIR, "rules/*/*.yml")
+    passed = _report("promtool check rules", containers.promtool("check", "rules", *rule_files))
+    passed &= _report(
+        "promtool check config", containers.promtool("check", "config", "prometheus.yml")
+    )
+    if not passed:
+        raise typer.Exit(code=1)
+
+
+@app.command("test-rules")
+def test_rules() -> None:
+    """Run promtool rule unit tests and amtool config and routing tests."""
+    rule_tests = containers.relative_files(paths.PROMETHEUS_DIR, "tests/*.yml")
+    passed = _report(
+        f"promtool test rules ({len(rule_tests)} files)",
+        containers.promtool("test", "rules", *rule_tests),
+    )
+    passed &= _report("amtool check-config", containers.amtool("check-config", "alertmanager.yml"))
+    cases = yaml.safe_load(
+        (paths.ALERTMANAGER_DIR / "tests" / "routes.yml").read_text(encoding="utf-8")
+    )["cases"]
+    for case in cases:
+        labels = [f"{key}={value}" for key, value in case["labels"].items()]
+        result = containers.amtool(
+            "config",
+            "routes",
+            "test",
+            "--config.file=alertmanager.yml",
+            f"--verify.receivers={case['receiver']}",
+            *labels,
+        )
+        passed &= _report(f"route: {case['name']} -> {case['receiver']}", result)
+    if not passed:
+        raise typer.Exit(code=1)
 
 
 @dashboards_app.command("generate")

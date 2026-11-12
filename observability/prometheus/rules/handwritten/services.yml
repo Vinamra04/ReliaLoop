@@ -1,0 +1,79 @@
+# Handwritten alerts about the demo services.
+#
+# Symptom alerts say users are affected. Cause alerts (class: cause) explain
+# why; they are never inhibited because they carry the evidence the agent and
+# humans need. See docs/alerting.md.
+groups:
+  - name: service-health
+    rules:
+      # One series per managed service (generated from the CMDB) minus the
+      # services that have a healthy instance. Written this way, rather than
+      # `up == 0`, it also fires when the only container is restarting and has
+      # dropped out of DNS, so there is no `up` series at all.
+      - alert: ServiceDown
+        expr: service:managed:info unless on (service) (up == 1)
+        for: 15s
+        labels:
+          severity: page
+          class: symptom
+        annotations:
+          summary: "{{ $labels.service }} has no healthy instance"
+          description: >-
+            Prometheus has not scraped a single healthy instance of
+            {{ $labels.service }} for 15 seconds. Requests to it are failing.
+          runbook_url: http://localhost:8080/runbooks/service-down
+          dashboard_url: http://localhost:3000/d/relialoop-golden-signals?var-service={{ $labels.service }}
+
+      - alert: CrashLoop
+        expr: sum by (service) (changes(process_start_time_seconds{service=~"gateway|orders"}[2m])) >= 2
+        labels:
+          severity: ticket
+          class: cause
+        annotations:
+          summary: "{{ $labels.service }} restarted {{ $value }} times in 2 minutes"
+          description: >-
+            The {{ $labels.service }} process keeps restarting. Typical causes are
+            a release that crashes on start or an out-of-memory kill.
+          runbook_url: http://localhost:8080/runbooks/crash-loop
+          dashboard_url: http://localhost:3000/d/relialoop-golden-signals?var-service={{ $labels.service }}
+
+      # Pages although it is a cause alert: it is the only signal that lets
+      # anyone act before users are affected. The 60%-of-limit guard keeps a
+      # normal start-up ramp from triggering the prediction.
+      - alert: MemoryExhaustionPredicted
+        expr: |
+          (
+            predict_linear(process_resident_memory_bytes{service=~"gateway|orders"}[1m], 60)
+              > on (service) group_left () (0.9 * service:memory_limit:bytes)
+          )
+          and
+          (
+            process_resident_memory_bytes{service=~"gateway|orders"}
+              > on (service) group_left () (0.6 * service:memory_limit:bytes)
+          )
+        for: 10s
+        labels:
+          severity: page
+          class: cause
+        annotations:
+          summary: "{{ $labels.service }} is predicted to run out of memory within a minute"
+          description: >-
+            Resident memory of {{ $labels.service }} ({{ $labels.instance }}) is above 60% of
+            its limit and, at the current growth rate, will exceed 90% of the limit within
+            60 seconds. This is the signature of a memory leak.
+          runbook_url: http://localhost:8080/runbooks/memory-exhaustion
+          dashboard_url: http://localhost:3000/d/relialoop-golden-signals?var-service={{ $labels.service }}
+
+      - alert: SaturationHigh
+        expr: avg by (service) (orders_worker_utilization) > 0.9
+        for: 30s
+        labels:
+          severity: ticket
+          class: cause
+        annotations:
+          summary: "{{ $labels.service }} worker slots are saturated"
+          description: >-
+            More than 90% of {{ $labels.service }} worker slots have been busy for 30 seconds,
+            averaged over replicas. Requests are queueing; latency and shed load will follow.
+          runbook_url: http://localhost:8080/runbooks/saturation
+          dashboard_url: http://localhost:3000/d/relialoop-golden-signals?var-service={{ $labels.service }}

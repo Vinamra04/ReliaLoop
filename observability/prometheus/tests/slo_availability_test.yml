@@ -1,0 +1,159 @@
+# Unit tests for the generated availability burn-rate alerts (demo profile).
+# Traffic is 20 rps: each 5 s sample adds 100 requests in total.
+rule_files:
+  - ../rules/generated/gateway-availability.yml
+  - ../rules/generated/orders-availability.yml
+
+evaluation_interval: 5s
+
+tests:
+  - name: fast burn pages about 20 s after half of the requests start failing
+    interval: 5s
+    input_series:
+      # Healthy for 5 minutes, then 50% errors from t=5m.
+      - series: 'http_requests_total{service="gateway", method="GET", route="/api/orders", status="200"}'
+        values: "0+100x60 6050+50x60"
+      - series: 'http_requests_total{service="gateway", method="GET", route="/api/orders", status="502"}'
+        values: "0x60 50+50x60"
+    alert_rule_test:
+      - eval_time: 4m55s
+        alertname: SLOBurnRateFast
+        exp_alerts: []
+      # 15 s of errors is 6.25% of the 2 m window: below the 7.2% threshold.
+      - eval_time: 5m15s
+        alertname: SLOBurnRateFast
+        exp_alerts: []
+      # 20 s of errors is 8.3% of the 2 m window: above it.
+      - eval_time: 5m20s
+        alertname: SLOBurnRateFast
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              class: symptom
+              slo: gateway-availability
+              service: gateway
+              sli_type: availability
+              burn: fast
+              owner: platform-team
+            exp_annotations:
+              summary: "gateway-availability: error budget burning at more than 14.4x (2m/30s windows)"
+              description: "Non-5xx share of gateway API requests. Objective 99.5%. The bad-event ratio exceeded 7.2% over both the last 2m and the last 30s. The whole error budget would be gone in a small fraction of the window: act now."
+              runbook_url: http://localhost:8080/runbooks/gateway-availability
+              dashboard_url: http://localhost:3000/d/relialoop-slo/slo-and-error-budget?var-slo=gateway-availability
+    promql_expr_test:
+      - expr: slo:burn_rate:ratio_30s{slo="gateway-availability"}
+        eval_time: 5m30s
+        exp_samples:
+          - labels: 'slo:burn_rate:ratio_30s{slo="gateway-availability", service="gateway"}'
+            value: 100
+      - expr: slo:objective:ratio{slo="gateway-availability"}
+        eval_time: 1m
+        exp_samples:
+          - labels: 'slo:objective:ratio{slo="gateway-availability", service="gateway"}'
+            value: 0.995
+      # The slower tiers follow: slow (page) and ticket/trickle (ticket).
+      - expr: count by (alertname, severity) (ALERTS{slo="gateway-availability", alertstate="firing"})
+        eval_time: 6m
+        exp_samples:
+          - labels: '{alertname="SLOBurnRateFast", severity="page"}'
+            value: 1
+          - labels: '{alertname="SLOBurnRateSlow", severity="page"}'
+            value: 1
+          - labels: '{alertname="SLOBurnRateTicket", severity="ticket"}'
+            value: 1
+          - labels: '{alertname="SLOBurnRateTrickle", severity="ticket"}'
+            value: 1
+
+  - name: the page resolves once the short window is clean again
+    interval: 5s
+    input_series:
+      # 50% errors between t=5m and t=6m, healthy before and after.
+      - series: 'http_requests_total{service="gateway", method="GET", route="/api/orders", status="200"}'
+        values: "0+100x60 6050+50x11 6700+100x60"
+      - series: 'http_requests_total{service="gateway", method="GET", route="/api/orders", status="502"}'
+        values: "0x60 50+50x11 600x60"
+    alert_rule_test:
+      - eval_time: 5m45s
+        alertname: SLOBurnRateFast
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              class: symptom
+              slo: gateway-availability
+              service: gateway
+              sli_type: availability
+              burn: fast
+              owner: platform-team
+            exp_annotations:
+              summary: "gateway-availability: error budget burning at more than 14.4x (2m/30s windows)"
+              description: "Non-5xx share of gateway API requests. Objective 99.5%. The bad-event ratio exceeded 7.2% over both the last 2m and the last 30s. The whole error budget would be gone in a small fraction of the window: act now."
+              runbook_url: http://localhost:8080/runbooks/gateway-availability
+              dashboard_url: http://localhost:3000/d/relialoop-slo/slo-and-error-budget?var-slo=gateway-availability
+      - eval_time: 6m40s
+        alertname: SLOBurnRateFast
+        exp_alerts: []
+
+  - name: a 10 second blip does not page
+    interval: 5s
+    input_series:
+      - series: 'http_requests_total{service="gateway", method="GET", route="/api/orders", status="200"}'
+        values: "0+100x60 6050+50x1 6200+100x60"
+      - series: 'http_requests_total{service="gateway", method="GET", route="/api/orders", status="502"}'
+        values: "0x60 50+50x1 100x60"
+    alert_rule_test:
+      - eval_time: 5m10s
+        alertname: SLOBurnRateFast
+        exp_alerts: []
+      - eval_time: 5m30s
+        alertname: SLOBurnRateFast
+        exp_alerts: []
+      - eval_time: 6m30s
+        alertname: SLOBurnRateFast
+        exp_alerts: []
+
+  - name: no-traffic guard - every request failing at 0.2 rps does not alert
+    interval: 5s
+    input_series:
+      - series: 'http_requests_total{service="gateway", method="GET", route="/api/orders", status="502"}'
+        values: "0+1x240"
+    promql_expr_test:
+      - expr: slo:burn_rate:ratio_2m{slo="gateway-availability"}
+        eval_time: 10m
+        exp_samples:
+          - labels: 'slo:burn_rate:ratio_2m{slo="gateway-availability", service="gateway"}'
+            value: 200
+      - expr: count(ALERTS{slo="gateway-availability"})
+        eval_time: 10m
+        exp_samples: []
+
+  - name: operational routes never count towards the SLI
+    interval: 5s
+    input_series:
+      - series: 'http_requests_total{service="gateway", method="GET", route="/api/orders", status="200"}'
+        values: "0+100x120"
+      - series: 'http_requests_total{service="gateway", method="POST", route="/chaos/errors", status="500"}'
+        values: "0+100x120"
+      - series: 'http_requests_total{service="gateway", method="GET", route="/readyz", status="503"}'
+        values: "0+100x120"
+    promql_expr_test:
+      - expr: slo:sli_error:ratio_rate2m{slo="gateway-availability"}
+        eval_time: 5m
+        exp_samples:
+          - labels: 'slo:sli_error:ratio_rate2m{slo="gateway-availability", service="gateway"}'
+            value: 0
+
+  - name: SLOs are per service - orders errors page for orders only
+    interval: 5s
+    input_series:
+      - series: 'http_requests_total{service="gateway", method="GET", route="/api/orders", status="200"}'
+        values: "0+100x120"
+      - series: 'http_requests_total{service="orders", method="GET", route="/orders", status="200"}'
+        values: "0+100x60 6050+50x60"
+      - series: 'http_requests_total{service="orders", method="GET", route="/orders", status="500"}'
+        values: "0x60 50+50x60"
+    promql_expr_test:
+      - expr: count by (slo) (ALERTS{alertname="SLOBurnRateFast", alertstate="firing"})
+        eval_time: 5m30s
+        exp_samples:
+          - labels: '{slo="orders-availability"}'
+            value: 1
