@@ -20,6 +20,7 @@ This document is blameless: it describes systems, signals and processes, not peo
 {% else %}{{ incident.summary }}. The agent diagnosed **{{ incident.category or "nothing conclusive" }}**{% if incident.root_cause_service %} at **{{ incident.root_cause_service }}**{% endif %} and the incident ended as **{{ incident.state }}**.
 {% endif %}
 
+
 ## Impact
 
 | Measure | Value |
@@ -41,6 +42,7 @@ This document is blameless: it describes systems, signals and processes, not peo
 {% for step in milestones -%}
 | {{ step.name }} | {{ step.at }} | {{ step.since }} |
 {% endfor %}
+
 
 ## Diagnosis
 
@@ -86,6 +88,7 @@ No diagnosis was produced.
 No action was proposed or executed.
 {% endif %}
 
+
 ## Verification
 
 {{ verification }}
@@ -97,6 +100,7 @@ No action was proposed or executed.
 {% for e in timeline -%}
 | {{ e.ts }} | {{ e.state }} | {{ e.message }} |
 {% endfor %}
+
 
 ## What went well
 
@@ -111,6 +115,7 @@ No action was proposed or executed.
 _To be completed by the reviewer. Prompts: Was the alert timely and actionable? Was the diagnosis right the first time? Did the safety controls (validator, policy, approval) behave as intended?_
 {% endif %}
 
+
 ## What went badly
 
 {% if narrative %}> **AI-drafted — human review required.**
@@ -123,6 +128,7 @@ _To be completed by the reviewer. Prompts: Was the alert timely and actionable? 
 {% else -%}
 _To be completed by the reviewer. Prompts: What delayed detection or mitigation? Which signal was missing or misleading? Was any action unnecessary?_
 {% endif %}
+
 
 ## Action items
 

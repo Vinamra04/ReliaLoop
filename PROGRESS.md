@@ -54,10 +54,10 @@ adversarial variant; smoke job in CI; Playwright; npm Dependabot.
 
 ## Phase 4 - LLM diagnosis, approval flow, postmortems (minimal)
 - [x] 4.1 Gemini key verified (masked); 27 models listed; `gemini-3.6-flash` chosen (newest flash-class model that answers); ADR 0003
-- [ ] 4.2 LLM abstraction: Gemini + Fake adapters, retries, fallback to rules with `degraded_mode`, token/latency metrics
-- [ ] 4.3 One versioned prompt, output schema, bounded evidence loop, prompt-injection tests
-- [ ] 4.4 Postmortem generator (Jinja2, AI-drafted sections labelled), `GET /incidents/{id}/postmortem`
-- [ ] 4.5 Live: LLM mode handles error spike, saturation and crash loop; rollback blocks on approval; tag `phase-4-complete`
+- [x] 4.2 LLM abstraction: Gemini + Fake adapters, retries, fallback to rules with `degraded_mode`, token/latency metrics
+- [x] 4.3 One versioned prompt, output schema, bounded evidence loop, prompt-injection tests
+- [x] 4.4 Postmortem generator (Jinja2, AI-drafted sections labelled), `GET /incidents/{id}/postmortem`
+- [x] 4.5 Live: LLM mode handles error spike, saturation and crash loop; rollback blocks on approval; tag `phase-4-complete`
 - skipped (scope): Ollama adapter, dev cache, circuit breaker
 - already done in Phase 3: approval flow, re-plan, re-adoption, kill switch, tickets, GET endpoints, runbook serving
 
@@ -114,6 +114,13 @@ adversarial variant; smoke job in CI; Playwright; npm Dependabot.
 - **Agent-created replicas and rolled-back containers keep the Compose labels**, so `docker compose down` removes them and `up` scales back to one replica. After a rollback Compose may recreate the container once on the next `up` (stale config hash); harmless.
 - **Docker socket access via `group_add`** (`DOCKER_GID`, 0 on Docker Desktop) so the agent still runs as a non-root user.
 - **Agent health alerts are tickets** delivered to the agent's own ticket endpoint; production would route them somewhere that does not depend on the agent.
+
+- **LLM model is `gemini-3.5-flash-lite`, not a plain flash model.** The free tier allows 20 requests per day per model for `gemini-3.6-flash`, which my own probing exhausted; flash-lite has a separate quota and diagnosed correctly. Details and measurements in ADR 0003. Results are labelled with the model.
+- **LLM calls: 25 s timeout, 2 attempts** (plan: up to 3 retries), so a hung provider delays an incident by under a minute before the rule-based fallback.
+- **`tenacity` pinned to 9.1.4**: `google-genai` 3.2.0 requires `<9.2.0`.
+- **An incident that arrives while a remediation is already in flight for a service in its dependency chain is not diagnosed**: it waits and verifies its own recovery, and is diagnosed afresh only if that fails. Found live: a sibling diagnosed mid-scale-out proposed a stale replica count.
+- **Prompt-injection handling:** log text is passed only inside a delimited block with `<` and `>` neutralised; lines that read like instructions are counted, recorded as a `security` timeline event and as evidence, and never obeyed. Four "obedient model" cases are tested and all end in a validator rejection.
+- **Postmortems** are written on verified recovery and on escalation; the reflective sections are AI-drafted and labelled only in LLM mode.
 
 ## Known issues
 - `fastapi.testclient` prints a deprecation warning asking for `httpx2`; tests pass. Not changed because the plan locks `httpx`.

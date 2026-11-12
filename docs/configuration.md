@@ -155,6 +155,28 @@ Consequences for the fault scenarios:
 | `HTTP_TIMEOUT_S` | `5` | Timeout of outbound HTTP calls |
 | `DOCKER_GID` | `0` | Group that owns the Docker socket inside containers (Compose `group_add`). Docker Desktop: 0; Linux: gid of the `docker` group |
 
+### LLM diagnosis
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `LLM_PROVIDER` | `gemini` | `gemini` or `fake` (scripted; tests and CI) |
+| `GEMINI_API_KEY` | empty | Key for the Gemini API. Only in `.env`; never logged. Without it only `DIAGNOSIS_MODE=rules` is available |
+| `GEMINI_MODEL` | empty | Model to use. Empty = probe the newest flash-class model at first use. Pinning is recommended; see `docs/adr/0003-llm-provider.md` for the free-tier quota that makes this matter |
+| `LLM_FAKE_FIXTURE` | unset | JSON file with scripted responses for the fake provider |
+| `LLM_TIMEOUT_S` | `25` | Time limit of one LLM call |
+| `LLM_MAX_ATTEMPTS` | `2` | Attempts per call for retryable errors (timeout, 429, 5xx), with exponential backoff and jitter |
+| `LLM_PROBE_TIMEOUT_S` | `20` | Time limit of a model-selection probe |
+| `LLM_MAX_OUTPUT_TOKENS` | `4096` | Output limit; generous because reasoning tokens count against it |
+| `LLM_TEMPERATURE` | `0.0` | Sampling temperature |
+| `MAX_EVIDENCE_ROUNDS` | `2` | Extra rounds in which the model may request optional catalog evidence by name |
+| `MAX_LLM_CALLS_PER_INCIDENT` | `3` | Hard cap on API calls for one diagnosis, retries included |
+| `POSTMORTEMS_DIR` | `/postmortems` | Where postmortems are written (bind mount of `./postmortems`) |
+
+Any LLM failure (timeout, rate limit, malformed output, exhausted call
+budget) falls back to the rule-based engine and marks the incident
+`degraded_mode`. `python -m tools.cli mode --diagnosis llm|rules` switches the
+engine for new incidents at runtime.
+
 ### Evidence
 
 | Variable | Default | Purpose |
