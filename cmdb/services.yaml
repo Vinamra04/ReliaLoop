@@ -1,0 +1,41 @@
+# Service catalog (CMDB). Validated at agent startup; an invalid file stops it.
+# The agent uses `depends_on` to localise root causes and `allowed_actions`,
+# `limits` and `managed` to decide what it may touch.
+services:
+  gateway:
+    description: User-facing edge API; SLOs are measured here.
+    tier: 1
+    owner: platform-team
+    contacts: ["#platform-oncall"]
+    managed: true
+    compose_service: gateway
+    depends_on: [orders]
+    slos: [gateway-availability, gateway-latency]
+    runbooks: [gateway-availability, gateway-latency, service-down, crash-loop, memory-exhaustion]
+    dashboards: ["http://localhost:3000/d/relialoop-golden-signals?var-service=gateway"]
+    allowed_actions: [restart_service, rollback_service]
+    limits: {min_replicas: 1, max_replicas: 1}
+    memory_limit_mb: 192
+
+  orders:
+    description: Order business logic backed by Postgres; horizontally scalable.
+    tier: 1
+    owner: platform-team
+    contacts: ["#platform-oncall"]
+    managed: true
+    compose_service: orders
+    depends_on: [postgres]
+    slos: [orders-availability, orders-latency]
+    runbooks: [orders-availability, orders-latency, service-down, crash-loop, memory-exhaustion, saturation]
+    dashboards: ["http://localhost:3000/d/relialoop-golden-signals?var-service=orders"]
+    allowed_actions: [restart_service, scale_service, rollback_service]
+    limits: {min_replicas: 1, max_replicas: 3}
+    memory_limit_mb: 192
+
+  postgres:
+    description: Orders database. Owned by another team; the agent never acts on it.
+    tier: 0
+    owner: data-team
+    contacts: ["#data-oncall"]
+    managed: false
+    allowed_actions: []
