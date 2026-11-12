@@ -99,6 +99,12 @@ def deploy(
         return DeployResult(False, 1, f"image {image} does not exist; run `build` first", gate)
 
     previous = current_version(versions_file, service)
+    if previous == version:
+        # Recording "v2 -> v2" would overwrite the previous version and leave
+        # the agent with nothing to roll back to.
+        return DeployResult(
+            True, 0, f"{service} is already on {version}; nothing to deploy", gate, previous
+        )
     event: dict[str, Any] = {
         "service": service,
         "version": version,

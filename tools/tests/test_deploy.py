@@ -130,3 +130,26 @@ def test_events_fall_back_to_a_local_file_when_the_agent_is_down(tmp_path, respx
     ]
     assert all("ts" in e for e in lines)
     assert TOKEN not in log.read_text(encoding="utf-8")
+
+
+@respx.mock
+def test_redeploying_the_current_version_is_a_no_op_that_keeps_the_rollback_target(
+    tmp_path, respx_mock
+):
+    events = respx_mock.post(f"{AGENT}/events/deploy").respond(202, json={})
+    path = versions(tmp_path)
+    composed: list[str] = []
+    with httpx.Client() as client:
+        result = deploy(
+            service="orders",
+            version="v1",
+            gate=ALLOW,
+            versions_file=path,
+            recorder=EventRecorder(client, AGENT, TOKEN, tmp_path / "log"),
+            compose_up=lambda service: composed.append(service) is None,
+            image_exists=lambda _: True,
+        )
+    assert (result.ok, result.exit_code) == (True, 0)
+    assert "already on v1" in result.message
+    assert events.calls.call_count == 0
+    assert composed == []
