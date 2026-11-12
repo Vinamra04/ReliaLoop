@@ -679,3 +679,103 @@ async def test_one_approval_covers_sibling_incidents_waiting_for_the_same_rollba
     assert "ACTING" not in rig.states(sibling.id)
     covered = [e for e in rig.store.audit_entries(sibling.id) if e["action"] == "action_covered"]
     assert covered[0]["data"]["covered_by"] == rig.incident(0).id
+
+
+async def test_incident_arriving_during_an_in_flight_remediation_waits_instead_of_diagnosing(
+    tmp_path: Path,
+):
+    """Regression: seen live. A sibling diagnosed mid-scale-out proposed a stale replica count."""
+    rig = PipelineRig(tmp_path)
+    rig.saturation()
+    await rig.page(gateway_alert())
+    first = rig.incident(0)
+    for state in (
+        State.ENRICHED,
+        State.DIAGNOSED,
+        State.VALIDATED,
+        State.POLICY_DECIDED,
+        State.ACTING,
+    ):
+        first.state = state
+    first.category = Category.LOAD_SATURATION
+    first.root_cause_service = "orders"
+    rig.store.save_incident(first)
+    rig.store.add_action(
+        first.id,
+        action_type="scale_service",
+        target="orders",
+        params={"replicas": 2},
+        risk="low",
+        decision="allow",
+        rule="low_risk_auto",
+        dry_run=False,
+        status="executing",
+        ts=rig.clock.now,
+    )
+
+    sibling_pipeline = rig.new_pipeline()
+    rig.pipeline = sibling_pipeline
+    await rig.page(orders_alert())
+    await sibling_pipeline.start()
+    await sibling_pipeline.drain()
+    await sibling_pipeline.stop()
+
+    sibling = rig.incident(1)
+    assert sibling.state is State.RESOLVED
+    assert rig.states(sibling.id) == ["RECEIVED", "VERIFYING", "RESOLVED"]
+    assert rig.store.diagnoses(sibling.id) == []
+    assert (sibling.category, sibling.root_cause_service) == (Category.LOAD_SATURATION, "orders")
+    covered = rig.store.actions(sibling.id)[0]
+    assert (covered["status"], covered["rule"]) == ("covered", "remediation_in_flight")
+    assert rig.executor.calls == []
+
+
+async def test_covered_incident_is_diagnosed_afresh_if_the_other_remediation_does_not_help(
+    tmp_path: Path,
+):
+    rig = PipelineRig(tmp_path)
+    rig.error_spike()
+    await rig.page(gateway_alert())
+    first = rig.incident(0)
+    first.state = State.ACTING
+    rig.store.save_incident(first)
+    other_action = rig.store.add_action(
+        first.id,
+        action_type="scale_service",
+        target="orders",
+        params={"replicas": 2},
+        risk="low",
+        decision="allow",
+        rule="low_risk_auto",
+        dry_run=False,
+        status="executing",
+        ts=rig.clock.now,
+    )
+    rig.recovered(False)
+
+    async def restart_fixes_it(service: str) -> ActionResult:
+        rig.executor.calls.append(("restart", service, None))
+        rig.recovered(True)
+        return ActionResult(success=True, detail="restarted")
+
+    rig.executor.restart = restart_fixes_it  # type: ignore[method-assign]
+    original_verify = rig.verifier.verify
+
+    async def other_remediation_ends_without_effect(*args, **kwargs):
+        rig.store.update_action(other_action, status="failed")
+        return await original_verify(*args, **kwargs)
+
+    rig.verifier.verify = other_remediation_ends_without_effect  # type: ignore[method-assign]
+    sibling_pipeline = rig.new_pipeline()
+    rig.pipeline = sibling_pipeline
+    await rig.page(orders_alert())
+    await sibling_pipeline.start()
+    await sibling_pipeline.drain()
+    await sibling_pipeline.stop()
+
+    sibling = rig.incident(1)
+    assert rig.states(sibling.id)[:3] == ["RECEIVED", "VERIFYING", "FAILED_VERIFICATION"]
+    assert sibling.state is State.RESOLVED
+    assert sibling.replans == 1
+    assert rig.executor.calls == [("restart", "orders", None)]
+    assert len(rig.store.diagnoses(sibling.id)) == 1

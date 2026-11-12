@@ -446,6 +446,8 @@ class IncidentPipeline:
         if service is None or not service.managed:
             await self._escalate(incident, "unknown_service", f"{incident.service} is not managed")
             return
+        if failed_action is None and await self._covered_before_diagnosis(incident):
+            return
 
         # ENRICHED
         bundle = await self._collector.collect(incident.id, incident.service, incident.slo)
@@ -565,6 +567,52 @@ class IncidentPipeline:
             return
 
         await self._decide(incident, action)
+
+    async def _covered_before_diagnosis(self, incident: Incident) -> bool:
+        """Skip diagnosis while another incident's remediation is in flight below this one.
+
+        Evidence collected in the middle of a restart, scale-out or rollback
+        describes a system that is already changing, so diagnosing on it only
+        produces stale proposals. The incident waits for that remediation and
+        verifies its own recovery; if that fails it is diagnosed afresh.
+        """
+        for service in self._cmdb.dependency_chain(incident.service):
+            running = await self._db(self._store.in_flight_action, service)
+            if not running or running["incident_id"] == incident.id:
+                continue
+            other = await self._db(self._store.get_incident, running["incident_id"])
+            if other is not None:
+                incident.category = other.category
+                incident.root_cause_service = other.root_cause_service
+            action = ProposedAction(
+                type=ActionType(running["type"]),
+                target_service=running["target"],
+                params=running["params"],
+            )
+            await self._db(
+                self._store.add_action,
+                incident.id,
+                action_type=running["type"],
+                target=running["target"],
+                params=running["params"],
+                risk=running["risk"],
+                decision=Decision.COVERED.value,
+                rule="remediation_in_flight",
+                dry_run=False,
+                status="covered",
+                ts=self._clock(),
+            )
+            await self._transition(
+                incident,
+                State.VERIFYING,
+                f"{running['type']} on {running['target']} is already in flight for "
+                f"{running['incident_id']}; waiting for it instead of diagnosing on "
+                "changing evidence",
+                {"covered_by": running["incident_id"]},
+            )
+            await self._verify(incident, action)
+            return True
+        return False
 
     async def _decide(self, incident: Incident, action: ProposedAction) -> None:
         """POLICY_DECIDED and what follows from the decision."""

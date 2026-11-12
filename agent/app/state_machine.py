@@ -13,7 +13,8 @@ from agent.app.domain import State
 _S = State
 
 TRANSITIONS: dict[State, frozenset[State]] = {
-    _S.RECEIVED: frozenset({_S.ENRICHED, _S.ESCALATED}),
+    # VERIFYING directly: a remediation for a service below is already in flight.
+    _S.RECEIVED: frozenset({_S.ENRICHED, _S.VERIFYING, _S.ESCALATED}),
     _S.ENRICHED: frozenset({_S.DIAGNOSED, _S.ESCALATED}),
     _S.DIAGNOSED: frozenset({_S.VALIDATED, _S.OBSERVED, _S.ESCALATED}),
     _S.VALIDATED: frozenset({_S.POLICY_DECIDED, _S.ESCALATED}),
