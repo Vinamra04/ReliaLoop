@@ -18,6 +18,7 @@ from agent.diagnosis.engine import Diagnoser, RulesDiagnoser
 from agent.policy.engine import PolicyEngine
 from agent.policy.limits import load_policy
 from agent.ports.protocols import Sample
+from agent.postmortem.generator import PostmortemWriter
 from agent.tests.fakes import EvidenceRig, FakeNotifier
 from agent.tests.fixtures import alert, webhook
 from agent.verify.verifier import Verifier
@@ -70,9 +71,10 @@ class PipelineRig(EvidenceRig):
         *,
         diagnoser: Diagnoser | None = None,
         metrics: AgentMetrics | None = None,
+        postmortem_llm: Any = None,
         **overrides: Any,
     ) -> None:
-        super().__init__(**overrides)
+        super().__init__(postmortems_dir=tmp_path / "postmortems", **overrides)
         self.db_path = tmp_path / "agent.db"
         self.store = SqliteStore(self.db_path)
         self.store.migrate()
@@ -91,6 +93,14 @@ class PipelineRig(EvidenceRig):
             executor=self.executor,
             sleep=_no_sleep,
         )
+        self.postmortems = PostmortemWriter(
+            settings=self.settings,
+            store=self.store,
+            cmdb=self.cmdb,
+            metrics=self.metrics,
+            llm=postmortem_llm,
+            clock=self.clock,
+        )
         self.pipeline = self.new_pipeline(diagnoser)
         self.recovered(True)
 
@@ -107,6 +117,7 @@ class PipelineRig(EvidenceRig):
             verifier=self.verifier,
             notifier=self.notifier,
             metrics=self.agent_metrics,
+            postmortems=self.postmortems,
             clock=self.clock,
         )
 
@@ -160,7 +171,13 @@ class PipelineRig(EvidenceRig):
         async def close() -> None:
             return None
 
-        return Components(store=self.store, pipeline=self.pipeline, readiness=ready, close=close)
+        return Components(
+            store=self.store,
+            pipeline=self.pipeline,
+            postmortems_dir=self.settings.postmortems_dir,
+            readiness=ready,
+            close=close,
+        )
 
 
 def gateway_alert(**overrides: Any) -> dict[str, Any]:

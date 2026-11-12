@@ -161,6 +161,9 @@ services:
       AGENT_MODE: ${AGENT_MODE:-dry_run}
       DIAGNOSIS_MODE: ${DIAGNOSIS_MODE:-rules}
       AGENT_WORKERS: ${AGENT_WORKERS:-2}
+      LLM_PROVIDER: ${LLM_PROVIDER:-gemini}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-}
       PROMETHEUS_URL: http://prometheus:9090
     volumes:
       # The Docker socket is root-equivalent access to the host. It is what
@@ -171,6 +174,7 @@ services:
       - ./deploy:/deploy
       - ./cmdb:/app/cmdb:ro
       - ./docs/runbooks:/app/docs/runbooks:ro
+      - ./postmortems:/postmortems
     # The app runs as a non-root user; this group grants it the socket.
     # Docker Desktop: 0. Linux: the gid of the host's `docker` group.
     group_add: ["${DOCKER_GID:-0}"]

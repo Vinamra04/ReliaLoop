@@ -1,0 +1,138 @@
+# Postmortem: {{ incident.id }}
+
+| | |
+|---|---|
+| **Service** | {{ incident.service }} |
+| **SLO** | {{ incident.slo or "none (cause alert)" }} |
+| **Outcome** | {{ incident.state }}{% if incident.resolution %} ({{ incident.resolution }}){% endif %}{% if incident.escalation_reason %}, escalated: {{ incident.escalation_reason }}{% endif %} |
+| **Category** | {{ incident.category or "not diagnosed" }} |
+| **Root cause service** | {{ incident.root_cause_service or "not determined" }} |
+| **Agent mode** | {{ incident.mode }} / diagnosis: {{ incident.diagnosis_mode }}{% if incident.degraded_mode %} (degraded: LLM unavailable, rule-based fallback){% endif %} |
+| **Generated** | {{ generated_at }} |
+
+This document is blameless: it describes systems, signals and processes, not people.
+
+## Summary
+
+{% if narrative %}> **AI-drafted — human review required.**
+
+{{ narrative.summary }}
+{% else %}{{ incident.summary }}. The agent diagnosed **{{ incident.category or "nothing conclusive" }}**{% if incident.root_cause_service %} at **{{ incident.root_cause_service }}**{% endif %} and the incident ended as **{{ incident.state }}**.
+{% endif %}
+
+## Impact
+
+| Measure | Value |
+|---|---|
+| Alert started | {{ times.alert_started or "unknown" }} |
+| Incident opened | {{ times.opened }} |
+| Incident ended | {{ times.ended or "still open" }} |
+| Duration (alert start to end) | {{ impact.duration }} |
+| Failed requests during the incident ({{ incident.service }}) | {{ impact.failed_requests }} |
+| Total requests during the incident ({{ incident.service }}) | {{ impact.total_requests }} |
+| Error budget consumed by this incident | {{ impact.budget_consumed }} |
+
+{{ impact.note }}
+
+## Detection and mitigation
+
+| Step | Time | Since alert start |
+|---|---|---|
+{% for step in milestones -%}
+| {{ step.name }} | {{ step.at }} | {{ step.since }} |
+{% endfor %}
+
+## Diagnosis
+
+{% for d in diagnoses -%}
+**{{ loop.index }}. {{ d.category }} at {{ d.root_cause_service }}** — confidence {{ "%.2f"|format(d.confidence) }}, engine: {{ d.mode }}{% if d.model %} ({{ d.provider }} {{ d.model }}, prompt {{ d.prompt_version }}, {{ d.tokens_in }} tokens in / {{ d.tokens_out }} out){% endif %}{% if d.degraded_mode %}, degraded mode{% endif %}
+
+{{ d.rationale }}
+
+Evidence cited:
+{% for c in d.evidence %}
+- `{{ c.id }}`: {{ c.observation }}
+{%- endfor %}
+
+Proposed action: `{{ d.action_type }}` on `{{ d.action_target }}`{% if d.action_params %} {{ d.action_params }}{% endif %}
+
+{% else -%}
+No diagnosis was produced.
+
+{% endfor -%}
+{% if validation_failures %}
+### Proposals rejected by the validator
+
+{% for v in validation_failures -%}
+- `{{ v.reason }}`: {{ v.detail }}
+{% endfor %}
+{% endif -%}
+{% if security_events %}
+### Security notes
+
+{% for s in security_events -%}
+- {{ s }}
+{% endfor %}
+{% endif %}
+## Actions and approvals
+
+{% if actions -%}
+| Action | Target | Risk | Policy decision | Rule | Result | Decided by |
+|---|---|---|---|---|---|---|
+{% for a in actions -%}
+| `{{ a.type }}` | {{ a.target }} | {{ a.risk }} | {{ a.decision }} | {{ a.rule }} | {{ a.status }}{% if a.detail %}: {{ a.detail }}{% endif %} | {{ a.decided_by or "policy (automatic)" }} |
+{% endfor %}
+{% else -%}
+No action was proposed or executed.
+{% endif %}
+
+## Verification
+
+{{ verification }}
+
+## Timeline
+
+| Time (UTC) | State | Event |
+|---|---|---|
+{% for e in timeline -%}
+| {{ e.ts }} | {{ e.state }} | {{ e.message }} |
+{% endfor %}
+
+## What went well
+
+{% if narrative %}> **AI-drafted — human review required.**
+
+{% for item in narrative.what_went_well -%}
+- {{ item }}
+{% else -%}
+- _(nothing drafted)_
+{% endfor %}
+{% else -%}
+_To be completed by the reviewer. Prompts: Was the alert timely and actionable? Was the diagnosis right the first time? Did the safety controls (validator, policy, approval) behave as intended?_
+{% endif %}
+
+## What went badly
+
+{% if narrative %}> **AI-drafted — human review required.**
+
+{% for item in narrative.what_went_badly -%}
+- {{ item }}
+{% else -%}
+- _(nothing drafted)_
+{% endfor %}
+{% else -%}
+_To be completed by the reviewer. Prompts: What delayed detection or mitigation? Which signal was missing or misleading? Was any action unnecessary?_
+{% endif %}
+
+## Action items
+
+{% if narrative %}> **AI-drafted — human review required.**
+
+{% for item in narrative.action_items -%}
+- [ ] {{ item }}
+{% else -%}
+- [ ] _(nothing drafted)_
+{% endfor %}
+{% else -%}
+- [ ] _To be completed by the reviewer: one owner and one due date per item; prefer changes to systems and processes over reminders._
+{% endif %}

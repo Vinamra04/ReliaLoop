@@ -23,6 +23,7 @@ from agent.evidence.catalog import load_catalog
 from agent.evidence.collector import EvidenceCollector
 from agent.policy.engine import PolicyEngine
 from agent.policy.limits import load_policy
+from agent.postmortem.generator import PostmortemWriter
 from agent.verify.verifier import Verifier
 from libs.core.cmdb import load_cmdb
 
@@ -102,6 +103,9 @@ async def build_components(settings: AgentSettings, metrics: AgentMetrics) -> Co
         ),
         notifier=LogNotifier(),
         metrics=metrics,
+        postmortems=PostmortemWriter(
+            settings=settings, store=store, cmdb=cmdb, metrics=prometheus, llm=llm_client
+        ),
     )
 
     async def readiness() -> dict[str, str]:
@@ -120,4 +124,10 @@ async def build_components(settings: AgentSettings, metrics: AgentMetrics) -> Co
         await http.aclose()
         await asyncio.to_thread(store.close)
 
-    return Components(store=store, pipeline=pipeline, readiness=readiness, close=close)
+    return Components(
+        store=store,
+        pipeline=pipeline,
+        postmortems_dir=settings.postmortems_dir,
+        readiness=readiness,
+        close=close,
+    )

@@ -40,6 +40,7 @@ from agent.evidence.collector import EvidenceCollector, utc_now
 from agent.policy.engine import PolicyEngine
 from agent.policy.limits import record_execution
 from agent.ports.protocols import ActionExecutor, Notifier
+from agent.postmortem.generator import PostmortemWriter
 from agent.verify.verifier import Verifier
 from libs.core.cmdb import Cmdb
 from services.kit.logging import get_logger
@@ -76,6 +77,7 @@ class IncidentPipeline:
         verifier: Verifier,
         notifier: Notifier,
         metrics: AgentMetrics,
+        postmortems: PostmortemWriter | None = None,
         clock: Clock = utc_now,
     ) -> None:
         self._settings = settings
@@ -89,6 +91,7 @@ class IncidentPipeline:
         self._verifier = verifier
         self._notifier = notifier
         self._metrics = metrics
+        self._postmortems = postmortems
         self._clock = clock
         self._mode: AgentMode = settings.agent_mode
         self._queue: asyncio.Queue[tuple[str, str]] = asyncio.Queue(settings.agent_queue_size)
@@ -206,6 +209,17 @@ class IncidentPipeline:
         await self._event(incident, "closed", f"incident closed: {incident.resolution}")
         await self._notifier.publish("incident", {"incident_id": incident.id, "status": "closed"})
 
+    async def _postmortem(self, incident: Incident) -> None:
+        """Write the postmortem. A failure here must never affect the incident itself."""
+        if self._postmortems is None:
+            return
+        try:
+            path = await self._postmortems.write(incident)
+        except Exception:
+            get_logger().exception("postmortem_failed", incident_id=incident.id)
+            return
+        await self._event(incident, "postmortem", f"postmortem written: {path.name}")
+
     async def _close_if_quiet(self, incident: Incident) -> None:
         """Close a finished incident once none of its alerts is firing any more."""
         finished = incident.status == "open" and incident.state in TERMINAL_STATES
@@ -226,6 +240,7 @@ class IncidentPipeline:
             summary=f"ESCALATED ({reason}): {incident.summary}"[:300],
         )
         await self._audit("escalated", incident.id, {"reason": reason, "detail": detail})
+        await self._postmortem(incident)
         await self._close_if_quiet(incident)
 
     # --- intake -----------------------------------------------------------------
@@ -890,6 +905,7 @@ class IncidentPipeline:
                 incident, State.RESOLVED, f"recovery verified: {result.detail}", data
             )
             await self._close(incident, "verified_recovery")
+            await self._postmortem(incident)
             return
         await self._transition(
             incident, State.FAILED_VERIFICATION, f"verification failed: {result.detail}", data

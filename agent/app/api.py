@@ -8,6 +8,7 @@ import secrets
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query
@@ -35,6 +36,7 @@ class Components:
 
     store: SqliteStore
     pipeline: IncidentPipeline
+    postmortems_dir: Path
     readiness: ReadinessCheck
     close: Callable[[], Awaitable[None]]
 
@@ -223,6 +225,17 @@ def create_app(settings: AgentSettings, factory: ComponentFactory) -> FastAPI:
             "audit": await db(store.audit_entries, incident_id),
             "audit_chain": {"intact": intact, "rows": rows},
         }
+
+    @app.get("/incidents/{incident_id}/postmortem", response_class=PlainTextResponse)
+    async def postmortem(incident_id: str) -> PlainTextResponse:
+        # Only ids of existing incidents are turned into a file name.
+        if await db(parts().store.get_incident, incident_id) is None:
+            raise HTTPException(status_code=404, detail="incident not found")
+        path = parts().postmortems_dir / f"{incident_id}.md"
+        if not path.is_file():
+            raise HTTPException(status_code=404, detail="no postmortem yet for this incident")
+        text = await asyncio.to_thread(path.read_text, "utf-8")
+        return PlainTextResponse(text, media_type="text/markdown; charset=utf-8")
 
     @app.get("/actions/pending")
     async def pending_actions() -> dict[str, Any]:

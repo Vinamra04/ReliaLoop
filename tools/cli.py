@@ -612,15 +612,21 @@ def reject(
 @app.command()
 def mode(
     new_mode: str | None = typer.Argument(None, help="observe, dry_run or enforce; omit to show."),
+    diagnosis: str | None = typer.Option(None, help="Diagnosis engine: rules or llm."),
     actor: str = typer.Option("operator"),
 ) -> None:
     """Show or change the agent's mode (the kill switch). Lasts until the agent restarts."""
     env = _env()
-    if new_mode:
+    if new_mode or diagnosis:
+        body: dict[str, Any] = {"actor": actor}
+        if new_mode:
+            body["mode"] = new_mode
+        if diagnosis:
+            body["diagnosis_mode"] = diagnosis
         _request(
             "POST",
             _agent(env, "/admin/mode"),
-            json={"mode": new_mode, "actor": actor},
+            json=body,
             headers={"X-Approver-Token": env["APPROVER_TOKEN"]},
         )
     status = _request("GET", _agent(env, "/status"))
