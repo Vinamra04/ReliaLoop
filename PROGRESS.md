@@ -27,13 +27,13 @@ The plan is `CLAUDE.md`. On this machine use `.venv/Scripts/python.exe -m tools.
 - [x] 2.6 Done-when checks shown; tag `phase-2-complete`
 
 ## Phase 3 — Agent core, rule-based mode
-- [ ] 3.1 Package structure, ports, config, store + migrations, CMDB, state machine, queue/workers, webhooks, metrics
-- [ ] 3.2 Evidence collector (catalog, Prometheus adapter, log summariser, redaction, deploy history)
-- [ ] 3.3 Rule-based engine, validator, policy engine, persisted rate limits
-- [ ] 3.4 `DockerExecutor`: restart, scale, rollback
-- [ ] 3.5 Verification loop, escalation, tickets, deploy event endpoint, deploy tool + gate
-- [ ] 3.6 Agent Dockerfile + compose service; dashboard 3
-- [ ] 3.7 Done-when checks shown; tag `phase-3-complete`
+- [x] 3.1 Package structure, ports, config, store + migrations, CMDB, state machine, queue/workers, webhooks, metrics
+- [x] 3.2 Evidence collector (catalog, Prometheus adapter, log summariser, redaction, deploy history)
+- [x] 3.3 Rule-based engine, validator, policy engine, persisted rate limits
+- [x] 3.4 `DockerExecutor`: restart, scale, rollback
+- [x] 3.5 Verification loop, escalation, tickets, deploy event endpoint, deploy tool + gate
+- [ ] 3.6 Agent Dockerfile + compose service DONE (socket via group_add, enforce verified live). STILL TO DO: dashboard 3 (agent), agent alert rules (AgentDown etc.) + agent-health runbook, Makefile targets (deploy gate incidents approve), docs/configuration.md agent vars
+- [ ] 3.7 Done-when: live VERIFIED error spike (INC-001/002 resolved, 2nd covered) and gateway memory leak (INC-003 resolved). STILL TO VERIFY LIVE: crash-loop/bad-deploy rollback waiting in PENDING_APPROVAL then approve; dry_run; gate blocking a deploy. Then tag phase-3-complete
 
 ## Phase 4 — LLM diagnosis, approval flow, postmortems
 - [ ] 4.1 **STOP: ask user for Gemini key**; verify masked; list models; ADR 0003
