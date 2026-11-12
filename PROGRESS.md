@@ -32,8 +32,8 @@ The plan is `CLAUDE.md`. On this machine use `.venv/Scripts/python.exe -m tools.
 - [x] 3.3 Rule-based engine, validator, policy engine, persisted rate limits
 - [x] 3.4 `DockerExecutor`: restart, scale, rollback
 - [x] 3.5 Verification loop, escalation, tickets, deploy event endpoint, deploy tool + gate
-- [ ] 3.6 Agent Dockerfile + compose service DONE (socket via group_add, enforce verified live). STILL TO DO: dashboard 3 (agent), agent alert rules (AgentDown etc.) + agent-health runbook, Makefile targets (deploy gate incidents approve), docs/configuration.md agent vars
-- [ ] 3.7 Done-when: live VERIFIED error spike (INC-001/002 resolved, 2nd covered) and gateway memory leak (INC-003 resolved). STILL TO VERIFY LIVE: crash-loop/bad-deploy rollback waiting in PENDING_APPROVAL then approve; dry_run; gate blocking a deploy. Then tag phase-3-complete
+- [x] 3.6 Agent Dockerfile + compose service; dashboard 3; agent health alerts + runbook
+- [x] 3.7 Done-when checks shown; tag `phase-3-complete`
 
 ## Phase 4 — LLM diagnosis, approval flow, postmortems
 - [ ] 4.1 **STOP: ask user for Gemini key**; verify masked; list models; ADR 0003
@@ -90,6 +90,18 @@ The plan is `CLAUDE.md`. On this machine use `.venv/Scripts/python.exe -m tools.
 - **Agent reuses `services/kit`** (logging, metrics middleware, health). The Phase 2 agent is only the authenticated webhook receiver; alerts labelled `relialoop_test=true` are counted but never become incidents.
 - **Runbook "what the agent does" sections describe the designed behaviour**; re-check them against the built agent in Phase 7.
 - **Webhook token is mounted at `/run/secrets/webhook_token`** in Alertmanager.
+
+- **Restart cooldown lives in the policy engine only**, not also in the validator's consistency matrix: one place for every limit.
+- **Runtime mode changes last until the agent restarts.** `AGENT_MODE` in `.env` is the source of truth at startup, so a demo that switched to `enforce` cannot silently stay there.
+- **Correlation ("covered").** One root cause often pages for several SLOs. A second incident proposing the action another incident is running (or just ran) verifies its own recovery instead of repeating it; an executed action also covers sibling incidents waiting for approval of the same action.
+- **Incident lifecycle.** A verified recovery closes the incident at once. Dry-run, observed, escalated and rejected incidents stay open until their alerts resolve. A late notification of the same alert episode (same fingerprint, `startsAt` before closure) never opens a new incident.
+- **Re-adoption after restart:** untouched incidents are processed, verification resumes, approvals keep waiting, anything interrupted mid-action is escalated (`agent_restart`) rather than repeated.
+- **Crash detection uses restarts by the container restart policy** (real crashes), falling back to process start-time changes only when the runtime cannot be asked. One crash right after a deploy already counts as a crashing release. Found live: the agent's own restart and a deploy looked like a crash loop, and a crashing release was first mistaken for a gateway error spike.
+- **A release that was rolled back is no longer "the last deploy"** for diagnosis or validation (found live: a reverted release was blamed for a later, unrelated fault). Restart evidence uses a 2-minute window (`restarts_2m`), matching the `CrashLoop` alert.
+- **The deploy tool treats redeploying the current version as a no-op**, so the recorded previous version (the rollback target) is never overwritten.
+- **Agent-created replicas and rolled-back containers keep the Compose labels**, so `docker compose down` removes them and `up` scales back to one replica. After a rollback Compose may recreate the container once on the next `up` (stale config hash); harmless.
+- **Docker socket access via `group_add`** (`DOCKER_GID`, 0 on Docker Desktop) so the agent still runs as a non-root user.
+- **Agent health alerts are tickets** delivered to the agent's own ticket endpoint; production would route them somewhere that does not depend on the agent.
 
 ## Known issues
 - `fastapi.testclient` prints a deprecation warning asking for `httpx2`; tests pass. Not changed because the plan locks `httpx`.
