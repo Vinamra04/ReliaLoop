@@ -68,15 +68,16 @@ def compose(*args: str, check: bool = True) -> int:
     return subprocess.run(compose_command(args), check=check).returncode  # noqa: S603
 
 
+def image_exists(image: str) -> bool:
+    """True when the image is present in the local Docker image store."""
+    result = subprocess.run(  # noqa: S603
+        ["docker", "image", "inspect", image],  # noqa: S607
+        capture_output=True,
+        check=False,
+    )
+    return result.returncode == 0
+
+
 def missing_images() -> list[str]:
     """Application images that have not been built yet."""
-    missing = []
-    for image in APP_IMAGES:
-        result = subprocess.run(  # noqa: S603
-            ["docker", "image", "inspect", image],  # noqa: S607
-            capture_output=True,
-            check=False,
-        )
-        if result.returncode != 0:
-            missing.append(image)
-    return missing
+    return [image for image in APP_IMAGES if not image_exists(image)]

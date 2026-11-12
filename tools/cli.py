@@ -16,11 +16,16 @@ import httpx
 import typer
 import yaml
 from rich.console import Console
+from rich.table import Table
 
+from libs.core.gate import GateDecision
 from tools import containers, init_env, paths, pipeline, stack
 from tools.dashboards import generate as dashboard_generator
+from tools.deploy.run import WAIT_TIMEOUT_S, EventRecorder
+from tools.deploy.run import deploy as run_deploy
+from tools.gate.check import DEFAULT_MIN_BUDGET, check_gate
 from tools.slo import build as slo_build
-from tools.slo.models import SpecError
+from tools.slo.models import SpecError, load_specs
 
 app = typer.Typer(
     name="relialoop",
@@ -32,6 +37,8 @@ dashboards_app = typer.Typer(help="Grafana dashboards as code.", no_args_is_help
 app.add_typer(dashboards_app, name="dashboards")
 slo_app = typer.Typer(help="SLOs as code: generate and validate rules.", no_args_is_help=True)
 app.add_typer(slo_app, name="slo")
+incidents_app = typer.Typer(help="Inspect incidents handled by the agent.", no_args_is_help=True)
+app.add_typer(incidents_app, name="incidents")
 console = Console()
 
 HTTP_TIMEOUT_S = 10.0
@@ -395,6 +402,249 @@ def silence(
                 raise _fail("give --service, --list or --expire")
     except httpx.HTTPError as exc:
         raise _fail(f"Alertmanager request failed: {type(exc).__name__}: {exc}") from exc
+
+
+def _env() -> dict[str, str]:
+    try:
+        return stack.load_env()
+    except stack.StackError as exc:
+        raise _fail(str(exc)) from exc
+
+
+def _service_slos(service: str) -> list[str]:
+    return [spec.name for spec in load_specs(paths.SLO_DIR) if spec.service == service]
+
+
+def _gate_decision(
+    env: dict[str, str], service: str, override: str | None, fail_open: bool
+) -> GateDecision:
+    with httpx.Client(timeout=HTTP_TIMEOUT_S) as client:
+        return check_gate(
+            client,
+            stack.local_url("PROMETHEUS_PORT", env),
+            service,
+            _service_slos(service),
+            min_budget=float(env.get("GATE_MIN_BUDGET") or DEFAULT_MIN_BUDGET),
+            override_reason=override,
+            fail_open=fail_open,
+        )
+
+
+def _print_gate(decision: GateDecision) -> None:
+    for slo, value in decision.budgets.items():
+        shown = "no data" if value is None else f"{value:.1%}"
+        console.print(f"  {slo:<24} budget remaining {shown}", highlight=False)
+    colour = (
+        "green"
+        if decision.allowed and not (decision.overridden or decision.failed_open)
+        else ("yellow" if decision.allowed else "red")
+    )
+    console.print(f"[{colour}]gate:[/{colour}] ", end="")
+    console.print(decision.reason, markup=False, highlight=False)
+
+
+@app.command()
+def gate(
+    service: str = typer.Option(..., help="Service that would be deployed."),
+    override: str | None = typer.Option(None, help="Reason for deploying despite a low budget."),
+    fail_open: bool = typer.Option(False, help="Allow when budgets cannot be read (dangerous)."),
+) -> None:
+    """Check the error-budget gate. Exit 0 allow, 2 blocked, 3 cannot tell (fails closed)."""
+    decision = _gate_decision(_env(), service, override, fail_open)
+    _print_gate(decision)
+    raise typer.Exit(code=decision.exit_code)
+
+
+@app.command()
+def deploy(
+    service: str = typer.Option(..., help="Service to deploy (gateway or orders)."),
+    version: str = typer.Option(..., help="Version tag, e.g. v1, v2-bad, v3-crash."),
+    override: str | None = typer.Option(None, help="Reason for deploying despite a low budget."),
+    fail_open: bool = typer.Option(False, help="Allow when budgets cannot be read (dangerous)."),
+) -> None:
+    """Deploy a version through the error-budget gate and record it with the agent."""
+    env = _env()
+    decision = _gate_decision(env, service, override, fail_open)
+    _print_gate(decision)
+
+    def compose_up(target: str) -> bool:
+        code = stack.compose(
+            "up",
+            "-d",
+            "--no-deps",
+            "--wait",
+            "--wait-timeout",
+            str(WAIT_TIMEOUT_S),
+            target,
+            check=False,
+        )
+        return code == 0
+
+    with httpx.Client(timeout=HTTP_TIMEOUT_S) as client:
+        recorder = EventRecorder(
+            client,
+            stack.local_url("AGENT_PORT", env),
+            env["WEBHOOK_TOKEN"],
+            paths.REPO_ROOT / "data" / "deploy-events.log",
+        )
+        result = run_deploy(
+            service=service,
+            version=version,
+            gate=decision,
+            versions_file=paths.VERSIONS_FILE,
+            recorder=recorder,
+            compose_up=compose_up,
+            image_exists=stack.image_exists,
+        )
+    if recorder.used_fallback:
+        console.print(
+            "[yellow]agent unreachable:[/yellow] deploy events written to data/deploy-events.log"
+        )
+    console.print(("[green]ok:[/green] " if result.ok else "[red]failed:[/red] ") + result.message)
+    raise typer.Exit(code=result.exit_code)
+
+
+def _agent(env: dict[str, str], path: str) -> str:
+    return f"{stack.local_url('AGENT_PORT', env)}{path}"
+
+
+@incidents_app.command("list")
+def incidents_list(
+    limit: int = typer.Option(20, min=1, max=500),
+    status: str | None = typer.Option(None, help="open or closed"),
+) -> None:
+    """List incidents, newest first."""
+    params: dict[str, Any] = {"limit": limit}
+    if status:
+        params["status"] = status
+    rows = _request("GET", _agent(_env(), "/incidents"), params=params)["incidents"]
+    table = Table("id", "service", "slo", "state", "category", "root cause", "mode", "opened")
+    for row in rows:
+        table.add_row(
+            row["id"],
+            row["service"],
+            row["slo"] or "-",
+            row["state"],
+            row["category"] or "-",
+            row["root_cause_service"] or "-",
+            f"{row['mode']}/{row['diagnosis_mode']}",
+            row["opened_at"][:19],
+        )
+    console.print(table if rows else "no incidents")
+
+
+@incidents_app.command("show")
+def incidents_show(
+    incident_id: str = typer.Argument(...),
+    as_json: bool = typer.Option(False, "--json", help="Print the full record as JSON."),
+) -> None:
+    """Show one incident: diagnosis, actions and the full timeline."""
+    detail = _request("GET", _agent(_env(), f"/incidents/{incident_id}"))
+    if as_json:
+        console.print_json(json.dumps(detail))
+        return
+    incident = detail["incident"]
+    console.print(f"[bold]{incident['id']}[/bold]  {incident['state']}  ({incident['status']})")
+    console.print(f"  service {incident['service']}  slo {incident['slo'] or '-'}")
+    console.print(
+        f"  category {incident['category'] or '-'}  "
+        f"root cause {incident['root_cause_service'] or '-'}"
+    )
+    if incident["escalation_reason"]:
+        console.print(f"  escalated: {incident['escalation_reason']}", markup=False)
+    for diagnosis in detail["diagnoses"]:
+        body = diagnosis["diagnosis"]
+        console.print(
+            f"  diagnosis ({diagnosis['mode']}): confidence {body['confidence']:.2f}, "
+            f"proposes {body['action']['type']} on {body['action']['target_service']}"
+        )
+        console.print(f"    {body['rationale']}", markup=False, highlight=False)
+        cited = ", ".join(c["id"] for c in body["evidence"])
+        console.print(f"    evidence: {cited}", markup=False, highlight=False)
+    for action in detail["actions"]:
+        console.print(
+            f"  action {action['type']} on {action['target']}: {action['status']} "
+            f"(policy {action['decision']} / {action['rule']})"
+        )
+    console.print("  timeline:")
+    for event in detail["timeline"]:
+        console.print(
+            f"    {event['ts'][11:19]}  {event['state']:<19} {event['message']}",
+            markup=False,
+            highlight=False,
+        )
+    chain = detail["audit_chain"]
+    console.print(
+        f"  audit chain: {'intact' if chain['intact'] else 'BROKEN'} ({chain['rows']} rows)"
+    )
+
+
+def _decision(incident_id: str, verb: str, actor: str, reason: str) -> None:
+    env = _env()
+    result = _request(
+        "POST",
+        _agent(env, f"/incidents/{incident_id}/{verb}"),
+        json={"actor": actor, "reason": reason},
+        headers={"X-Approver-Token": env["APPROVER_TOKEN"]},
+    )
+    console.print(f"{incident_id}: {verb} recorded, state {result['incident']['state']}")
+
+
+@app.command()
+def approve(
+    incident_id: str = typer.Argument(...),
+    actor: str = typer.Option("operator", help="Who is approving (recorded in the audit log)."),
+) -> None:
+    """Approve the pending high-risk action of an incident."""
+    _decision(incident_id, "approve", actor, "")
+
+
+@app.command()
+def reject(
+    incident_id: str = typer.Argument(...),
+    actor: str = typer.Option("operator"),
+    reason: str = typer.Option("", help="Why (recorded in the audit log)."),
+) -> None:
+    """Reject the pending high-risk action of an incident."""
+    _decision(incident_id, "reject", actor, reason)
+
+
+@app.command()
+def mode(
+    new_mode: str | None = typer.Argument(None, help="observe, dry_run or enforce; omit to show."),
+    actor: str = typer.Option("operator"),
+) -> None:
+    """Show or change the agent's mode (the kill switch). Lasts until the agent restarts."""
+    env = _env()
+    if new_mode:
+        _request(
+            "POST",
+            _agent(env, "/admin/mode"),
+            json={"mode": new_mode, "actor": actor},
+            headers={"X-Approver-Token": env["APPROVER_TOKEN"]},
+        )
+    status = _request("GET", _agent(env, "/status"))
+    console.print(
+        f"agent mode: [bold]{status['mode']}[/bold]  diagnosis: {status['diagnosis_mode']}  "
+        f"queue: {status['queue_depth']}"
+    )
+
+
+@app.command()
+def tickets(limit: int = typer.Option(20, min=1, max=500)) -> None:
+    """List tickets (one per page incident and per ticket-severity alert)."""
+    rows = _request("GET", _agent(_env(), "/tickets"), params={"limit": limit})["tickets"]
+    table = Table("id", "severity", "priority", "status", "service", "summary")
+    for row in rows:
+        table.add_row(
+            str(row["id"]),
+            row["severity"],
+            row["priority"],
+            row["status"],
+            row["service"],
+            row["summary"],
+        )
+    console.print(table if rows else "no tickets")
 
 
 @dashboards_app.command("generate")
