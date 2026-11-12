@@ -192,7 +192,7 @@ def create_app(settings: AgentSettings, factory: ComponentFactory) -> FastAPI:
         pipeline = parts().pipeline
         return {
             "mode": pipeline.mode,
-            "diagnosis_mode": settings.diagnosis_mode,
+            "diagnosis_mode": pipeline.diagnosis_mode,
             "queue_depth": pipeline.queue_depth,
             "workers": settings.agent_workers,
             "version": settings.release_version,
@@ -278,8 +278,22 @@ def create_app(settings: AgentSettings, factory: ComponentFactory) -> FastAPI:
 
     @app.post("/admin/mode", dependencies=[approver])
     async def set_mode(body: ModeIn) -> dict[str, str]:
-        await parts().pipeline.set_mode(body.mode, body.actor)
-        get_logger().warning("agent_mode_changed", mode=body.mode, actor=body.actor)
-        return {"mode": body.mode}
+        pipeline = parts().pipeline
+        if body.mode is None and body.diagnosis_mode is None:
+            raise HTTPException(status_code=422, detail="give mode and/or diagnosis_mode")
+        if body.diagnosis_mode is not None:
+            try:
+                await pipeline.set_diagnosis_mode(body.diagnosis_mode, body.actor)
+            except ValueError as exc:
+                raise HTTPException(status_code=409, detail=str(exc)) from None
+        if body.mode is not None:
+            await pipeline.set_mode(body.mode, body.actor)
+        get_logger().warning(
+            "agent_mode_changed",
+            mode=pipeline.mode,
+            diagnosis_mode=pipeline.diagnosis_mode,
+            actor=body.actor,
+        )
+        return {"mode": pipeline.mode, "diagnosis_mode": pipeline.diagnosis_mode}
 
     return app

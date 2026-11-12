@@ -200,7 +200,7 @@ def test_health_status_and_metrics(client):
     for name in (
         "agent_mode",
         "agent_queue_depth",
-        "agent_llm_circuit_state",
+        "agent_llm_calls_total",
         "http_requests_total",
     ):
         assert name in body
@@ -325,6 +325,10 @@ def test_mode_change_requires_the_approver_token_and_is_validated(client):
     changed = client.post(
         "/admin/mode", json={"mode": "observe", "actor": "carol"}, headers=APPROVER
     )
-    assert changed.json() == {"mode": "observe"}
+    assert changed.json() == {"mode": "observe", "diagnosis_mode": "rules"}
+    assert client.post("/admin/mode", json={}, headers=APPROVER).status_code == 422
+    # Only the rule-based engine exists in this test rig... both names map to it.
+    switched = client.post("/admin/mode", json={"diagnosis_mode": "llm"}, headers=APPROVER)
+    assert switched.json() == {"mode": "observe", "diagnosis_mode": "llm"}
     assert client.get("/status").json()["mode"] == "observe"
     assert 'agent_mode{mode="observe"} 1.0' in client.get("/metrics").text

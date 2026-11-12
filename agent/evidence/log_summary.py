@@ -20,6 +20,14 @@ TOP_TEMPLATES = 5
 # Fields worth keeping in the rendered tail, in this order.
 TAIL_FIELDS = ("status", "route", "kind", "upstream_status", "error", "version", "duration_ms")
 
+# Text that addresses an AI rather than describing an event. Matching lines are
+# still passed on as data; the count just makes the attempt visible.
+INSTRUCTION_LIKE = re.compile(
+    r"(?i)\b(ignore|disregard|forget|override)\b.{0,40}\b(previous|prior|above|earlier|all)\b"
+    r".{0,40}\b(instruction|prompt|rule|direction)s?\b"
+    r"|\byou are now\b|\bsystem prompt\b|\bas an ai\b|\bnew instructions?\b"
+)
+
 _UUID = re.compile(
     r"\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b"
 )
@@ -69,6 +77,7 @@ def summarize_logs(
     """Summarise log lines: top error templates with counts, plus a short tail."""
     templates: Counter[str] = Counter()
     rendered: list[str] = []
+    suspicious = sum(1 for line in lines if INSTRUCTION_LIKE.search(line))
     for line in lines:
         record = _parse(line)
         if record is None:
@@ -100,4 +109,5 @@ def summarize_logs(
         error_templates=top,
         tail=tuple(reversed(tail)),
         truncated=truncated,
+        suspicious_lines=suspicious,
     )

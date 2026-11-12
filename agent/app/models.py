@@ -7,7 +7,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from agent.app.config import AgentMode
+from agent.app.config import AgentMode, DiagnosisMode
 
 AlertStatus = Literal["firing", "resolved"]
 
@@ -88,5 +88,6 @@ class ApprovalIn(BaseModel):
 class ModeIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    mode: AgentMode
+    mode: AgentMode | None = None
+    diagnosis_mode: DiagnosisMode | None = None
     actor: str = Field(default="operator", min_length=1, max_length=64)

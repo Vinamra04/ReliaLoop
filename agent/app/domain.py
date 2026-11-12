@@ -74,6 +74,8 @@ class LogSummary(_Frozen):
     error_templates: tuple[tuple[str, int], ...] = ()
     tail: tuple[str, ...] = ()
     truncated: bool = False
+    # Lines that read like instructions to an AI (possible prompt injection).
+    suspicious_lines: int = 0
 
 
 class DeployEvent(_Frozen):
@@ -155,6 +157,11 @@ class DiagnosisRecord(_Frozen):
     tokens_out: int = 0
     latency_ms: float = 0.0
     degraded_mode: bool = False
+    fallback_reason: str = ""
+    llm_calls: int = 0
+    evidence_rounds: int = 0
+    # Redacted, size-capped model output. Written to the audit log only.
+    raw_output: str = ""
 
 
 class ValidationResult(_Frozen):

@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 MIN_TOKEN_LENGTH = 16
@@ -35,6 +35,23 @@ class AgentSettings(BaseSettings):
     diagnosis_mode: DiagnosisMode = "rules"
     agent_workers: int = Field(default=2, ge=1, le=16)
     agent_queue_size: int = Field(default=100, ge=1)
+
+    # --- LLM ----------------------------------------------------------------
+    llm_provider: Literal["gemini", "fake"] = "gemini"
+    gemini_api_key: SecretStr = SecretStr("")
+    # Empty: pick the newest responsive flash-class model at first use (ADR 0003).
+    gemini_model: str = ""
+    # Optional JSON file with scripted responses for the fake provider.
+    llm_fake_fixture: Path | None = None
+    llm_timeout_s: float = Field(default=30.0, gt=0)
+    llm_probe_timeout_s: float = Field(default=20.0, gt=0)
+    llm_max_attempts: int = Field(default=3, ge=1, le=5)
+    llm_max_output_tokens: int = Field(default=4096, gt=0)
+    llm_temperature: float = Field(default=0.0, ge=0, le=1)
+    # Extra evidence rounds the LLM may request, and the hard cap on API calls.
+    max_evidence_rounds: int = Field(default=2, ge=0)
+    max_llm_calls_per_incident: int = Field(default=3, ge=1)
+    postmortems_dir: Path = Path("/postmortems")
 
     # --- API limits ---------------------------------------------------------
     max_body_bytes: int = Field(default=262_144, gt=0)

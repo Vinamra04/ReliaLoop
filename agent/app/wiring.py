@@ -14,13 +14,34 @@ from agent.app.api import Components
 from agent.app.config import AgentSettings
 from agent.app.metrics import AgentMetrics
 from agent.app.pipeline import IncidentPipeline
-from agent.diagnosis.engine import RulesDiagnoser
+from agent.diagnosis.engine import Diagnoser, RulesDiagnoser
+from agent.diagnosis.llm.base import LLMClient
+from agent.diagnosis.llm.fake import FakeLLM
+from agent.diagnosis.llm.gemini import GeminiClient
+from agent.diagnosis.llm_engine import LlmDiagnoser
 from agent.evidence.catalog import load_catalog
 from agent.evidence.collector import EvidenceCollector
 from agent.policy.engine import PolicyEngine
 from agent.policy.limits import load_policy
 from agent.verify.verifier import Verifier
 from libs.core.cmdb import load_cmdb
+
+
+def build_llm_client(settings: AgentSettings) -> LLMClient | None:
+    """The configured LLM provider, or None when Gemini is selected without a key."""
+    if settings.llm_provider == "fake":
+        fixture = settings.llm_fake_fixture
+        return FakeLLM.from_fixture(fixture) if fixture else FakeLLM()
+    key = settings.gemini_api_key.get_secret_value()
+    if not key:
+        return None
+    return GeminiClient(
+        key,
+        model=settings.gemini_model,
+        temperature=settings.llm_temperature,
+        max_output_tokens=settings.llm_max_output_tokens,
+        probe_timeout_s=settings.llm_probe_timeout_s,
+    )
 
 
 async def build_components(settings: AgentSettings, metrics: AgentMetrics) -> Components:
@@ -52,12 +73,28 @@ async def build_components(settings: AgentSettings, metrics: AgentMetrics) -> Co
         deploys=store,
         executor=executor,
     )
+    rules = RulesDiagnoser(settings)
+    diagnosers: dict[str, Diagnoser] = {"rules": rules}
+    llm_client = build_llm_client(settings)
+    if llm_client is not None:
+        diagnosers["llm"] = LlmDiagnoser(
+            settings=settings,
+            cmdb=cmdb,
+            catalog=catalog,
+            client=llm_client,
+            collector=collector,
+            fallback=rules,
+            metrics=metrics,
+        )
+    elif settings.diagnosis_mode == "llm":
+        raise ValueError("DIAGNOSIS_MODE=llm needs GEMINI_API_KEY (or LLM_PROVIDER=fake)")
+
     pipeline = IncidentPipeline(
         settings=settings,
         cmdb=cmdb,
         store=store,
         collector=collector,
-        diagnoser=RulesDiagnoser(settings),
+        diagnosers=diagnosers,
         policy=PolicyEngine(policy, cmdb, store),
         executor=executor,
         verifier=Verifier(

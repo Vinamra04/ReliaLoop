@@ -101,7 +101,7 @@ class PipelineRig(EvidenceRig):
             cmdb=self.cmdb,
             store=self.store,
             collector=self.collector,
-            diagnoser=diagnoser or RulesDiagnoser(self.settings),
+            diagnosers=self._diagnosers(diagnoser),
             policy=self.policy,
             executor=self.executor,
             verifier=self.verifier,
@@ -109,6 +109,11 @@ class PipelineRig(EvidenceRig):
             metrics=self.agent_metrics,
             clock=self.clock,
         )
+
+    def _diagnosers(self, diagnoser: Diagnoser | None) -> dict[str, Diagnoser]:
+        """A custom diagnoser stands in for both engines; otherwise only rules exists."""
+        rules: Diagnoser = RulesDiagnoser(self.settings)
+        return {"rules": diagnoser or rules, "llm": diagnoser or rules}
 
     def recovered(self, healthy: bool) -> None:
         """Make verification see a recovered (or still burning) system."""

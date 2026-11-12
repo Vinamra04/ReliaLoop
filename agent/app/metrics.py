@@ -54,11 +54,6 @@ class AgentMetrics:
             registry=registry,
         )
         self.llm_errors = counter("agent_llm_errors_total", "LLM errors by kind.", ["kind"])
-        self.llm_circuit_state = Gauge(
-            "agent_llm_circuit_state",
-            "LLM circuit breaker: 0 closed, 1 open.",
-            registry=registry,
-        )
         self.validation_failures = counter(
             "agent_validation_failures_total",
             "Diagnoses rejected by the validator, by reason.",

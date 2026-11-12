@@ -244,6 +244,19 @@ class EvidenceCollector:
             tail_lines=self._settings.log_tail_lines,
         )
         summaries.append(summary)
+        if summary.suspicious_lines:
+            items.append(
+                EvidenceItem(
+                    id=item_id("suspicious_log_text", service),
+                    service=service,
+                    name="suspicious_log_text",
+                    window=f"{self._settings.log_since_s}s",
+                    value=float(summary.suspicious_lines),
+                    unit="count",
+                    observed_at=now,
+                    source="logs",
+                )
+            )
         items.append(
             EvidenceItem(
                 id=item_id("log_error_lines", service),

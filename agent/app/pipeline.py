@@ -18,7 +18,7 @@ from typing import Any, TypeVar
 import structlog
 
 from agent.adapters.sqlite_store import SqliteStore
-from agent.app.config import AgentMode, AgentSettings
+from agent.app.config import AgentMode, AgentSettings, DiagnosisMode
 from agent.app.domain import (
     EXECUTABLE_ACTIONS,
     TERMINAL_STATES,
@@ -70,7 +70,7 @@ class IncidentPipeline:
         cmdb: Cmdb,
         store: SqliteStore,
         collector: EvidenceCollector,
-        diagnoser: Diagnoser,
+        diagnosers: dict[str, Diagnoser],
         policy: PolicyEngine,
         executor: ActionExecutor,
         verifier: Verifier,
@@ -82,7 +82,8 @@ class IncidentPipeline:
         self._cmdb = cmdb
         self._store = store
         self._collector = collector
-        self._diagnoser = diagnoser
+        self._diagnosers = diagnosers
+        self._diagnosis_mode: DiagnosisMode = settings.diagnosis_mode
         self._policy = policy
         self._executor = executor
         self._verifier = verifier
@@ -109,6 +110,10 @@ class IncidentPipeline:
     @property
     def mode(self) -> AgentMode:
         return self._mode
+
+    @property
+    def diagnosis_mode(self) -> DiagnosisMode:
+        return self._diagnosis_mode
 
     @property
     def queue_depth(self) -> int:
@@ -266,7 +271,7 @@ class IncidentPipeline:
                 slo=alert.labels.get("slo"),
                 severity=alert.labels.get("severity", "page"),
                 mode=self._mode,
-                diagnosis_mode=self._settings.diagnosis_mode,
+                diagnosis_mode=self._diagnosis_mode,
                 summary=alert.annotations.get("summary", alert.name)[:300],
                 now=now,
             )
@@ -438,8 +443,40 @@ class IncidentPipeline:
 
         # DIAGNOSED
         with self._metrics.diagnosis_duration.labels(mode=incident.diagnosis_mode).time():
-            record, bundle = await self._diagnoser.diagnose(bundle, failed_action=failed_action)
+            diagnoser = self._diagnosers.get(incident.diagnosis_mode) or self._diagnosers["rules"]
+            record, bundle = await diagnoser.diagnose(bundle, failed_action=failed_action)
         await self._db(self._store.add_evidence, bundle, incident.replans + 1)
+        for summary in bundle.logs:
+            if summary.suspicious_lines:
+                await self._event(
+                    incident,
+                    "security",
+                    f"{summary.suspicious_lines} log line(s) of {summary.service} read like "
+                    "instructions (possible prompt injection); treated as data, not obeyed",
+                    {"service": summary.service, "lines": summary.suspicious_lines},
+                )
+        if record.mode == "llm":
+            await self._audit(
+                "llm_response",
+                incident.id,
+                {
+                    "provider": record.provider,
+                    "model": record.model,
+                    "prompt_version": record.prompt_version,
+                    "llm_calls": record.llm_calls,
+                    "evidence_rounds": record.evidence_rounds,
+                    "tokens_in": record.tokens_in,
+                    "tokens_out": record.tokens_out,
+                    "raw_output": record.raw_output,
+                },
+            )
+        if record.degraded_mode:
+            await self._event(
+                incident,
+                "degraded",
+                f"LLM unavailable ({record.fallback_reason}); diagnosed by the rule-based engine",
+                {"reason": record.fallback_reason},
+            )
         await self._db(self._store.add_diagnosis, incident.id, record, self._clock())
         diagnosis = record.diagnosis
         incident.category = diagnosis.category
@@ -879,6 +916,15 @@ class IncidentPipeline:
         await self._db(self._store.set_state, "mode", mode)
         await self._audit("mode_changed", "agent", {"from": previous, "to": mode}, actor)
         await self._notifier.publish("mode", {"from": previous, "to": mode, "actor": actor})
+
+    async def set_diagnosis_mode(self, mode: DiagnosisMode, actor: str) -> None:
+        """Choose the diagnosis engine for new incidents. Audited; lasts until restart."""
+        if mode not in self._diagnosers:
+            raise ValueError(f"diagnosis mode {mode} is not available")
+        previous = self._diagnosis_mode
+        self._diagnosis_mode = mode
+        await self._audit("diagnosis_mode_changed", "agent", {"from": previous, "to": mode}, actor)
+        await self._notifier.publish("mode", {"diagnosis_mode": mode, "actor": actor})
 
     async def record_deploy(self, event: DeployEvent) -> None:
         await self._db(self._store.add_deploy, event)
