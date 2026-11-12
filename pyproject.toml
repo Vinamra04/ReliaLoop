@@ -15,6 +15,7 @@ extend-exclude = ["console/web", "observability/prometheus/rules/generated"]
 select = ["E", "F", "W", "I", "B", "UP", "N", "S", "C4", "SIM", "RUF", "ASYNC", "PT", "T20"]
 ignore = [
   "S101",  # assert is the idiom in pytest
+  "ASYNC109",  # the LLM port takes an explicit per-call timeout by design
 ]
 
 [tool.ruff.lint.per-file-ignores]

@@ -54,9 +54,7 @@ groups:
           dashboard_url: http://localhost:3000/d/relialoop-agent
 
       - alert: AgentLLMErrorsHigh
-        expr: |
-          max(agent_llm_circuit_state) == 1
-          or sum(increase(agent_llm_errors_total[5m])) >= 3
+        expr: sum(increase(agent_llm_errors_total[5m])) >= 3
         labels:
           severity: ticket
           class: cause
@@ -64,8 +62,8 @@ groups:
         annotations:
           summary: The agent's LLM provider is failing
           description: >-
-            LLM calls are failing or the circuit breaker is open. The agent falls back to the
-            rule-based engine and marks incidents as degraded; diagnoses are still produced.
+            LLM calls are failing. The agent falls back to the rule-based engine and marks
+            incidents as degraded; diagnoses are still produced.
           runbook_url: http://localhost:8080/runbooks/agent-health
           dashboard_url: http://localhost:3000/d/relialoop-agent
 

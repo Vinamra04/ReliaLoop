@@ -144,9 +144,10 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "0 = closed (LLM in use), 1 = open (falling back to the rule-based engine).",
+      "description": "LLM calls that failed in the last hour; each one fell back to the rule-based engine.",
       "fieldConfig": {
         "defaults": {
+          "decimals": 0,
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -155,8 +156,12 @@
                 "value": null
               },
               {
-                "color": "red",
+                "color": "orange",
                 "value": 1
+              },
+              {
+                "color": "red",
+                "value": 3
               }
             ]
           },
@@ -189,14 +194,14 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "max(agent_llm_circuit_state)",
+          "expr": "sum(increase(agent_llm_errors_total[1h])) or vector(0)",
           "instant": false,
           "legendFormat": "",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "LLM circuit breaker",
+      "title": "LLM errors (1h)",
       "type": "stat"
     },
     {

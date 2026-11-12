@@ -11,7 +11,7 @@ The remediation agent itself is unhealthy. It is monitored like any other produc
 | `AgentDown` | No healthy agent has been scraped for 30 s |
 | `AgentValidationFailuresHigh` | 3 or more diagnoses rejected by the validator in 10 min |
 | `AgentRecoveryFailing` | 2 or more actions in 15 min were followed by failed verification |
-| `AgentLLMErrorsHigh` | LLM circuit breaker open, or 3 or more LLM errors in 5 min |
+| `AgentLLMErrorsHigh` | 3 or more LLM errors in 5 min |
 | `AgentQueueSaturated` | Queue depth 50 or more, or webhooks rejected with 429 |
 
 ## Impact

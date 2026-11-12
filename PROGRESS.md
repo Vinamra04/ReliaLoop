@@ -35,35 +35,47 @@ The plan is `CLAUDE.md`. On this machine use `.venv/Scripts/python.exe -m tools.
 - [x] 3.6 Agent Dockerfile + compose service; dashboard 3; agent health alerts + runbook
 - [x] 3.7 Done-when checks shown; tag `phase-3-complete`
 
-## Phase 4 — LLM diagnosis, approval flow, postmortems
+## Scope change (owner decision, 2026-11-13)
+
+The owner reduced the scope: this is a portfolio project, not a production
+system. This section overrides `CLAUDE.md` wherever they differ. Three things
+are not negotiable: evaluation produces real measured numbers; the incident
+lifecycle (detect, diagnose, validate, remediate, verify) is demonstrable;
+safety controls stay real (the LLM never executes anything directly; the
+validator, the policy engine and human approval remain).
+
+**Skipped (scope):** Phase 6 Mission Control UI entirely (console API, web UI,
+agent SSE stream, `/admin/deploy`, metrics-catalog manifest); Ollama adapter;
+dev response cache; LLM circuit breaker; Trivy; hadolint; coverage thresholds
+(sensible tests for validator and policy engine stay); extra ADRs (0002,
+0004-0007); handoff report; clean-state reproducibility run; eval `--full`
+mode and resumability; eval scenarios memory_leak, bad_deploy and the
+adversarial variant; smoke job in CI; Playwright; npm Dependabot.
+
+## Phase 4 - LLM diagnosis, approval flow, postmortems (minimal)
 - [x] 4.1 Gemini key verified (masked); 27 models listed; `gemini-3.6-flash` chosen (newest flash-class model that answers); ADR 0003
-- [ ] 4.2 LLM abstraction: Gemini, Ollama, Fake, breaker + fallback, retries, dev cache, metrics
-- [ ] 4.3 Prompts (versioned), schema, bounded evidence loop, validator hardening, prompt-injection tests
-- [ ] 4.4 Re-plan on failed verification, re-adoption on restart, kill switch
-- [ ] 4.5 Postmortem generator, tickets, GET endpoints, runbook serving
-- [ ] 4.6 Done-when checks shown; tag `phase-4-complete`
+- [ ] 4.2 LLM abstraction: Gemini + Fake adapters, retries, fallback to rules with `degraded_mode`, token/latency metrics
+- [ ] 4.3 One versioned prompt, output schema, bounded evidence loop, prompt-injection tests
+- [ ] 4.4 Postmortem generator (Jinja2, AI-drafted sections labelled), `GET /incidents/{id}/postmortem`
+- [ ] 4.5 Live: LLM mode handles error spike, saturation and crash loop; rollback blocks on approval; tag `phase-4-complete`
+- skipped (scope): Ollama adapter, dev cache, circuit breaker
+- already done in Phase 3: approval flow, re-plan, re-adoption, kill switch, tickets, GET endpoints, runbook serving
 
-## Phase 5 — Evaluation, CI, quality gates
-- [ ] 5.1 Eval harness (scenarios, injector, measurer, report, charts; resumable; always cleans up)
-- [ ] 5.2 Real `--quick` run; record durations
-- [ ] 5.3 CI workflow, Dependabot, `smoke`, coverage thresholds
-- [ ] 5.4 Coverage raised to thresholds; lint/type pass
-- [ ] 5.5 Done-when checks shown; tag `phase-5-complete`
+## Phase 5 - Evaluation and CI (reduced)
+- [ ] 5.1 Eval harness: 3 scenarios (error_spike, latency_saturation, crash_loop) x modes none/rules/llm; per-run ground truth, timeouts, always cleans up
+- [ ] 5.2 Real `--quick` run (9 runs); `results.json`, `summary.csv`, `results.md`, one or two charts
+- [ ] 5.3 CI: one workflow (ruff, format check, mypy, pytest, pip-audit, promtool/amtool/compose validation, basic image build); Dependabot for pip, Docker, GitHub Actions
+- [ ] 5.4 Tag `phase-5-complete`
+- skipped (scope): `--full`, resumability, Trivy, hadolint, coverage thresholds, smoke job
 
-## Phase 6 — Mission Control console
-- [ ] 6.1 Agent additions: SSE stream, `/admin/deploy`, `results.json`, `docs/metrics-catalog.json`
-- [ ] 6.2 Console API (BFF) + tests + Docker build + compose service
-- [ ] 6.3 Design system, base components, `/design` route, `docs/ui-design.md`
-- [ ] 6.4 Views: Overview, Incidents, Fault Lab (+Eval viewer), SLOs, Agent, Topology, Alerts, Deploys & Gate, Services, Metrics Explorer
-- [ ] 6.5 Polish: motion, states, accessibility, reduced motion, performance, light theme
-- [ ] 6.6 Vitest, Playwright, axe, bundle-size check, screenshots
-- [ ] 6.7 Done-when checks shown; tag `phase-6-complete`
+## Phase 6 - Mission Control console
+- skipped (scope): the whole phase
 
-## Phase 7 — Documentation, polish, final verification
-- [ ] 7.1 All docs, runbooks, ADRs, README with real screenshots and honest results
-- [ ] 7.2 Clean-state `init` + `demo` reproducibility run
+## Phase 7 - README and release (reduced)
+- [ ] 7.1 One strong README: architecture diagram, honest results, how to run, GIF of the Grafana dashboard during a fault
+- [ ] 7.2 Runbooks re-checked against the built agent
 - [ ] 7.3 Final secret scan, clean `git status`, tag `v1.0.0`
-- [ ] 7.4 Handoff report (`docs/HANDOFF.md`)
+- skipped (scope): handoff report, clean-state reproducibility run, extra ADRs and docs
 
 ## Decisions / Deviations
 - **No `make` on the dev machine.** The Python CLI is canonical (as the plan allows). The Makefile is written but has not been executed here; targets are added only once the command they wrap exists.

@@ -79,31 +79,9 @@ tests:
           - labels: "{}"
             value: 1
 
-  - name: AgentLLMErrorsHigh fires on an open circuit breaker
+  - name: AgentLLMErrorsHigh fires on three LLM errors in five minutes
     interval: 5s
     input_series:
-      - series: 'agent_llm_circuit_state{service="agent"}'
-        values: "0x12 1x12 0x12"
-      - series: 'agent_llm_errors_total{service="agent", kind="timeout"}'
-        values: "0x36"
-    promql_expr_test:
-      - expr: count(ALERTS{alertname="AgentLLMErrorsHigh", alertstate="firing"})
-        eval_time: 55s
-        exp_samples: []
-      - expr: count(ALERTS{alertname="AgentLLMErrorsHigh", alertstate="firing"})
-        eval_time: 1m30s
-        exp_samples:
-          - labels: "{}"
-            value: 1
-      - expr: count(ALERTS{alertname="AgentLLMErrorsHigh", alertstate="firing"})
-        eval_time: 2m30s
-        exp_samples: []
-
-  - name: AgentLLMErrorsHigh fires on repeated errors with the breaker closed
-    interval: 5s
-    input_series:
-      - series: 'agent_llm_circuit_state{service="agent"}'
-        values: "0x60"
       - series: 'agent_llm_errors_total{service="agent", kind="rate_limited"}'
         values: "0x12 1 2 3 4x40"
     promql_expr_test:

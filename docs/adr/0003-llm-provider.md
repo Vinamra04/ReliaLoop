@@ -17,8 +17,9 @@ to the key and pick the newest flash-class one.
 ## Decision
 
 **Provider interface.** `LLMClient.generate_structured(system, user, schema,
-timeout)` with three adapters: `gemini` (default), `ollama` (optional, local)
-and `fake` (scripted, used by every test and by CI).
+timeout)` with two adapters: `gemini` (default) and `fake` (scripted, used by every
+test and by CI). A local `ollama` adapter was planned and dropped when the
+project scope was reduced; the interface is where it would plug in.
 
 **SDK.** `google-genai` 3.2.0, async client, JSON mode with a response schema,
 temperature 0.
@@ -63,8 +64,8 @@ reasoning tokens. The adapter therefore sets a generous output limit.
   `prompt_version`), so results stay attributable when the selection changes.
 - Probing costs a few seconds once per agent start, not per incident.
 - An LLM outage, slowness or bad output never blocks an incident: per-call
-  timeout, bounded retries, a circuit breaker and automatic fallback to the
-  rule-based engine, with the incident flagged `degraded_mode`.
+  timeout, bounded retries and automatic fallback to the rule-based engine
+  (a circuit breaker was planned and dropped with the scope reduction), with the incident flagged `degraded_mode`.
 - Model output is never trusted: every proposal passes the same validator and
   policy engine as the rule-based engine's.
 - The API key lives only in `.env` (gitignored) and reaches the agent as an

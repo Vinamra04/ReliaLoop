@@ -512,10 +512,11 @@ def incidents_agent() -> dict[str, Any]:
         thresholds=[Threshold(None, GREEN), Threshold(10, AMBER), Threshold(50, RED)],
     )
     layout.stat(
-        "LLM circuit breaker",
-        "0 = closed (LLM in use), 1 = open (falling back to the rule-based engine).",
-        [Query("max(agent_llm_circuit_state)")],
-        thresholds=[Threshold(None, GREEN), Threshold(1, RED)],
+        "LLM errors (1h)",
+        "LLM calls that failed in the last hour; each one fell back to the rule-based engine.",
+        [Query("sum(increase(agent_llm_errors_total[1h])) or vector(0)")],
+        decimals=0,
+        thresholds=[Threshold(None, GREEN), Threshold(1, AMBER), Threshold(3, RED)],
     )
     layout.stat(
         "Incidents (1h)",
