@@ -10,13 +10,13 @@ The plan is `CLAUDE.md`. On this machine use `.venv/Scripts/python.exe -m tools.
 - [x] 0.4 venv, dev tools, pre-commit hooks installed; `pre-commit run --all-files` passes; first commit; tag `phase-0-complete`
 
 ## Phase 1 — Services and observability base
-- [ ] 1.1 `services/kit` (settings, logging, metrics middleware, health, chaos)
-- [ ] 1.2 `gateway`, `orders`, `loadgen` + Dockerfiles + unit tests
-- [ ] 1.3 `docker-compose.yml` (networks, healthchecks, limits, labels, localhost ports)
-- [ ] 1.4 Prometheus config (jobs, relabeling, dns_sd) + Grafana provisioning + dashboard 1
-- [ ] 1.5 Chaos endpoints + release-profile images (`v1`, `v2-bad`, `v3-crash`)
-- [ ] 1.6 Tune orders capacity model; document in `docs/configuration.md`
-- [ ] 1.7 Done-when checks shown; tag `phase-1-complete`
+- [x] 1.1 `services/kit` (settings, logging, metrics middleware, health, chaos)
+- [x] 1.2 `gateway`, `orders`, `loadgen` + Dockerfiles + unit tests
+- [x] 1.3 `docker-compose.yml` (networks, healthchecks, limits, labels, localhost ports)
+- [x] 1.4 Prometheus config (jobs, relabeling, dns_sd) + Grafana provisioning + dashboard 1
+- [x] 1.5 Chaos endpoints + release-profile images (`v1`, `v2-bad`, `v3-crash`)
+- [x] 1.6 Tune orders capacity model; document in `docs/configuration.md`
+- [x] 1.7 Done-when checks shown; tag `phase-1-complete`
 
 ## Phase 2 — SLOs, alerting, Alertmanager
 - [ ] 2.1 SLO specs, pydantic models, generator, validator, promtool integration
@@ -72,5 +72,17 @@ The plan is `CLAUDE.md`. On this machine use `.venv/Scripts/python.exe -m tools.
 - **Image tags** chosen from Docker Hub's current stable releases on 2026-11-12 and verified with `docker manifest inspect`; see `docs/adr/0001-stack-and-versions.md`.
 - **Extra pre-commit hook:** a local `tools/secret_scan.py` hook for API-key shapes (§2.4), in addition to the hooks the plan lists.
 
+- **Compose container names.** Orders has no fixed `container_name` (Compose refuses to scale a service that has one), so containers are `relialoop-orders-1`, `-2`, …; the agent will identify containers by the labels `com.docker.compose.service` / `relialoop.service`, not by a fixed name.
+- **Orders images are built by build-only Compose services** (`orders-v1`, `orders-v2-bad`, `orders-v3-crash`, profile `build`). The running `orders` service has no `build:` section, so a build can never tag a good image with a bad version name. `python -m tools.cli build` builds everything.
+- **Chaos for orders goes through the gateway** (`/chaos/target/orders/...`, fanned out to every replica), because orders replicas are not published to the host.
+- **Faults are applied by a FastAPI dependency, not middleware**, so injected errors are recorded against the real route template and count in the SLIs.
+- **Leaked memory is kept after a leak fault expires** (growth stops; only `DELETE /chaos` or a restart frees it), like a real leak.
+- **Orders sheds load**: a request waiting more than 1.5 s for a worker slot gets 503 (gateway reports 502). Under saturation errors are therefore mostly 502, not 504 as the plan's taxonomy suggests.
+- **Saturation surge is 150 rps, not 180**: measured capacity is about 89 rps per replica, so 150 rps saturates one replica and is healthy on two (scale +1 recovers). See `docs/configuration.md`.
+- **Loadgen spreads requests over 8 HTTP client pools and has 2 CPUs**: a single httpx pool with hundreds of connections stalled the generator under overload (found while tuning).
+- **Dashboards are generated** from `tools/dashboards/definitions.py` (`dashboards generate`, with a staleness test) instead of hand-written JSON.
+- **Host ports are configurable** (`*_PORT` in `.env`). On the dev machine port 3000 is used by another program, so the local `.env` sets `GRAFANA_PORT=3001`; the default stays 3000.
+
 ## Known issues
+- `fastapi.testclient` prints a deprecation warning asking for `httpx2`; tests pass. Not changed because the plan locks `httpx`.
 - The project lives in a OneDrive-synced folder; OneDrive may sync or briefly lock `.venv` / `node_modules`. No failure observed so far.
