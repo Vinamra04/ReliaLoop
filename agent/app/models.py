@@ -7,11 +7,15 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from agent.app.config import AgentMode
+
 AlertStatus = Literal["firing", "resolved"]
 
 # Alerts carrying this label (value "true") exercise the delivery path only:
 # they are counted and acknowledged but never become incidents or tickets.
 TEST_ALERT_LABEL = "relialoop_test"
+NAME_PATTERN = r"^[a-z][a-z0-9-]{0,62}$"
+VERSION_PATTERN = r"^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$"
 
 
 class AmAlert(BaseModel):
@@ -58,3 +62,31 @@ class Accepted(BaseModel):
 
     accepted: int
     ignored_test_alerts: int = 0
+
+
+class DeployEventIn(BaseModel):
+    """A deploy event reported by the deploy tool."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    service: str = Field(pattern=NAME_PATTERN)
+    version: str = Field(pattern=VERSION_PATTERN)
+    previous_version: str | None = Field(default=None, pattern=VERSION_PATTERN)
+    status: Literal["started", "completed", "failed"]
+    reason: Literal["deploy"] = "deploy"
+    override_reason: str | None = Field(default=None, max_length=300)
+    actor: str = Field(default="cli", max_length=64)
+
+
+class ApprovalIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    actor: str = Field(default="operator", min_length=1, max_length=64)
+    reason: str = Field(default="", max_length=300)
+
+
+class ModeIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    mode: AgentMode
+    actor: str = Field(default="operator", min_length=1, max_length=64)
