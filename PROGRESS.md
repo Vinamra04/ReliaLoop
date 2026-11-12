@@ -36,7 +36,7 @@ The plan is `CLAUDE.md`. On this machine use `.venv/Scripts/python.exe -m tools.
 - [x] 3.7 Done-when checks shown; tag `phase-3-complete`
 
 ## Phase 4 — LLM diagnosis, approval flow, postmortems
-- [ ] 4.1 **STOP: ask user for Gemini key**; verify masked; list models; ADR 0003
+- [x] 4.1 Gemini key verified (masked); 27 models listed; `gemini-3.6-flash` chosen (newest flash-class model that answers); ADR 0003
 - [ ] 4.2 LLM abstraction: Gemini, Ollama, Fake, breaker + fallback, retries, dev cache, metrics
 - [ ] 4.3 Prompts (versioned), schema, bounded evidence loop, validator hardening, prompt-injection tests
 - [ ] 4.4 Re-plan on failed verification, re-adoption on restart, kill switch

@@ -31,3 +31,19 @@ def test_main_reports_without_printing_the_secret(tmp_path: Path, capsys):
     err = capsys.readouterr().err
     assert "google-api-key" in err
     assert FAKE_GOOGLE_KEY not in err
+
+
+def test_exact_env_values_are_detected_whatever_their_format(tmp_path: Path, capsys):
+    env = tmp_path / ".env"
+    env.write_text(
+        "LOG_LEVEL=INFO\nGEMINI_API_KEY=new.format-key_0123456789abcdef\nWEBHOOK_TOKEN=short\n"
+        "POSTGRES_PASSWORD=correct-horse-battery-staple\n",
+        encoding="utf-8",
+    )
+    secrets = secret_scan.env_secrets(env)
+    assert set(secrets) == {"GEMINI_API_KEY", "POSTGRES_PASSWORD"}
+
+    hits = secret_scan.scan_text("x = 'new.format-key_0123456789abcdef'\nfine\n", secrets)
+    assert hits == [(1, "value-of-GEMINI_API_KEY")]
+    assert secret_scan.scan_text("nothing secret here", secrets) == []
+    assert secret_scan.env_secrets(tmp_path / "missing.env") == {}
