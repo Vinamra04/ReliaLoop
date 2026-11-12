@@ -1,0 +1,189 @@
+# ReliaLoop stack. Use `python -m tools.cli up` (or `make up`), which passes
+# `--env-file .env --env-file deploy/versions.env`.
+name: relialoop
+
+x-hardening: &hardening
+  restart: unless-stopped
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  logging:
+    driver: json-file
+    options: {max-size: "5m", max-file: "2"}
+
+x-orders-build: &orders-build
+  context: .
+  dockerfile: services/orders/Dockerfile
+
+services:
+  postgres:
+    <<: *hardening
+    image: postgres:16.15-alpine
+    user: "70:70" # the image's postgres user, so no root and no capabilities are needed
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-relialoop}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?run `python -m tools.cli init` first}
+      POSTGRES_DB: ${POSTGRES_DB:-orders}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./services/orders/db/init.sql:/docker-entrypoint-initdb.d/001-init.sql:ro
+    tmpfs: [/tmp, /var/run/postgresql]
+    networks: [internal]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    mem_limit: 256m
+    cpus: 1.0
+
+  orders:
+    <<: *hardening
+    image: relialoop/orders:${ORDERS_VERSION:-v1}
+    environment:
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      CHAOS_TOKEN: ${CHAOS_TOKEN:?run `python -m tools.cli init` first}
+      POSTGRES_HOST: postgres
+      POSTGRES_USER: ${POSTGRES_USER:-relialoop}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-orders}
+      ORDERS_WORKERS: ${ORDERS_WORKERS:-4}
+      ORDERS_WORK_MS: ${ORDERS_WORK_MS:-40}
+    tmpfs: [/tmp]
+    networks: [internal]
+    depends_on:
+      postgres: {condition: service_healthy}
+    labels:
+      relialoop.managed: "true"
+      relialoop.service: orders
+    mem_limit: 192m
+    cpus: 0.5
+
+  gateway:
+    <<: *hardening
+    image: relialoop/gateway:${GATEWAY_VERSION:-v1}
+    build:
+      context: .
+      dockerfile: services/gateway/Dockerfile
+      args: {RELEASE_VERSION: "${GATEWAY_VERSION:-v1}"}
+    environment:
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      CHAOS_TOKEN: ${CHAOS_TOKEN}
+      ORDERS_HOST: orders
+    tmpfs: [/tmp]
+    networks: [internal, edge]
+    ports: ["127.0.0.1:${GATEWAY_PORT:-8000}:8000"]
+    depends_on:
+      orders: {condition: service_healthy}
+    labels:
+      relialoop.managed: "true"
+      relialoop.service: gateway
+    mem_limit: 192m
+    cpus: 1.0
+
+  loadgen:
+    <<: *hardening
+    image: relialoop/loadgen:v1
+    build:
+      context: .
+      dockerfile: services/loadgen/Dockerfile
+      args: {RELEASE_VERSION: v1}
+    environment:
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      LOADGEN_TOKEN: ${LOADGEN_TOKEN:?run `python -m tools.cli init` first}
+      LOADGEN_RPS: ${LOADGEN_RPS:-20}
+      TARGET_URL: http://gateway:8000
+    tmpfs: [/tmp]
+    networks: [internal, edge]
+    ports: ["127.0.0.1:${LOADGEN_PORT:-8002}:8002"]
+    depends_on:
+      gateway: {condition: service_healthy}
+    mem_limit: 256m
+    cpus: 1.0
+
+  prometheus:
+    <<: *hardening
+    image: prom/prometheus:v3.16.0
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=7d
+      - --web.enable-lifecycle
+    volumes:
+      - ./observability/prometheus:/etc/prometheus:ro
+      - promdata:/prometheus
+    tmpfs: [/tmp]
+    networks: [internal, edge]
+    ports: ["127.0.0.1:${PROMETHEUS_PORT:-9090}:9090"]
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:9090/-/ready"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    mem_limit: 512m
+    cpus: 1.0
+
+  grafana:
+    <<: *hardening
+    image: grafana/grafana:13.3.1
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?run `python -m tools.cli init` first}
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: "false"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/golden-signals.json
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafanadata:/var/lib/grafana
+    tmpfs: [/tmp]
+    networks: [internal, edge]
+    ports: ["127.0.0.1:${GRAFANA_PORT:-3000}:3000"]
+    depends_on:
+      prometheus: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/api/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    mem_limit: 384m
+    cpus: 1.0
+
+  # Build-only definitions for the orders release images (never started:
+  # they exist so `docker compose --profile build build` produces every tag).
+  orders-v1:
+    profiles: [build]
+    image: relialoop/orders:v1
+    build:
+      <<: *orders-build
+      args: {RELEASE_VERSION: v1, RELEASE_PROFILE: good}
+  orders-v2-bad:
+    profiles: [build]
+    image: relialoop/orders:v2-bad
+    build:
+      <<: *orders-build
+      args: {RELEASE_VERSION: v2-bad, RELEASE_PROFILE: bad}
+      labels: {relialoop.demo: fault-release}
+  orders-v3-crash:
+    profiles: [build]
+    image: relialoop/orders:v3-crash
+    build:
+      <<: *orders-build
+      args: {RELEASE_VERSION: v3-crash, RELEASE_PROFILE: crash}
+      labels: {relialoop.demo: fault-release}
+
+networks:
+  # Published ports live here; bound to 127.0.0.1 only.
+  edge: {}
+  # Service-to-service traffic; no route to the outside world.
+  internal:
+    internal: true
+
+volumes:
+  pgdata: {}
+  promdata: {}
+  grafanadata: {}

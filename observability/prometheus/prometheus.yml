@@ -1,0 +1,47 @@
+# Demo profile: 5 s scrape/evaluation so faults are visible within seconds.
+# Production would use 15-30 s.
+global:
+  scrape_interval: 5s
+  scrape_timeout: 4s
+  evaluation_interval: 5s
+
+# Every job discovers targets through DNS A records, so replicas that share a
+# network alias are scraped automatically. Application metrics carry no
+# `service` label; it is attached here.
+scrape_configs:
+  - job_name: gateway
+    dns_sd_configs:
+      - names: [gateway]
+        type: A
+        port: 8000
+        refresh_interval: 5s
+    relabel_configs:
+      - target_label: service
+        replacement: gateway
+
+  - job_name: orders
+    dns_sd_configs:
+      - names: [orders]
+        type: A
+        port: 8001
+        refresh_interval: 5s
+    relabel_configs:
+      - target_label: service
+        replacement: orders
+
+  - job_name: loadgen
+    dns_sd_configs:
+      - names: [loadgen]
+        type: A
+        port: 8002
+        refresh_interval: 5s
+    relabel_configs:
+      - target_label: service
+        replacement: loadgen
+
+  - job_name: prometheus
+    static_configs:
+      - targets: ["127.0.0.1:9090"]
+    relabel_configs:
+      - target_label: service
+        replacement: prometheus

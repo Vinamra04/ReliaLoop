@@ -25,3 +25,4 @@ console/web/playwright-report
 .claude
 CLAUDE.md
 PROGRESS.md
+**/tests
