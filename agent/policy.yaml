@@ -1,0 +1,28 @@
+# Policy: what the agent may do on its own, what needs a human, and how often.
+# Declarative on purpose: changing the agent's authority is a reviewed config
+# change, not a code change. Every decision is written to the audit log with
+# the name of the rule that fired.
+
+# Risk class per action. Unknown actions are treated as high risk.
+risk:
+  restart_service: low
+  scale_service: low
+  rollback_service: high
+
+approval:
+  # Risk classes that wait for a human (POST /incidents/{id}/approve).
+  required_for: [high]
+  # No decision within this time escalates the incident.
+  timeout_s: 600
+
+limits:
+  # At most this many restarts of one service within the window.
+  restarts_per_service:
+    max: 2
+    window_s: 900
+  # At most this many executed actions for one incident (one action plus one re-plan).
+  actions_per_incident: 2
+  # Global cap on executed actions, across all services.
+  actions_per_hour: 30
+  # After any action on a service, wait this long before another one on it.
+  cooldown_s: 60

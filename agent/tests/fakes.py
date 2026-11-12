@@ -223,3 +223,94 @@ class FakeNotifier:
 
     async def publish(self, kind: str, payload: Mapping[str, Any]) -> None:
         self.events.append((kind, payload))
+
+
+class EvidenceRig:
+    """All evidence fakes wired to a real collector."""
+
+    def __init__(self, **overrides: Any) -> None:
+        from agent.evidence.collector import EvidenceCollector
+
+        self.settings = settings(**overrides)
+        self.cmdb = cmdb()
+        self.clock = Clock()
+        self.metrics = FakeMetrics()
+        self.logs = FakeLogs()
+        self.deploys = FakeDeploys()
+        self.executor = FakeExecutor()
+        self.collector = EvidenceCollector(
+            settings=self.settings,
+            cmdb=self.cmdb,
+            catalog=self.metrics.catalog,
+            metrics=self.metrics,
+            logs=self.logs,
+            deploys=self.deploys,
+            executor=self.executor,
+            clock=self.clock,
+        )
+
+    async def bundle(self, service: str = "gateway", slo: str | None = "gateway-availability"):
+        return await self.collector.collect("INC-20261112-001", service, slo)
+
+    # --- fault scenarios, as they look in the evidence ---------------------------
+
+    def error_spike(self, service: str = "orders", ratio: float = 0.5) -> None:
+        self.metrics.set_many(service, {"err_ratio_1m": ratio, "err_ratio_5m": ratio / 2})
+        if service == "orders":
+            self.metrics.set_many("gateway", {"err_ratio_1m": ratio, "err_ratio_5m": ratio / 2})
+
+    def saturation(self) -> None:
+        self.metrics.set_many(
+            "orders",
+            {
+                "worker_utilization": 0.99,
+                "request_rate_1m": 150.0,
+                "request_rate_baseline": 20.0,
+                "err_ratio_1m": 0.45,
+                "p99_latency_1m": 1.9,
+            },
+        )
+        self.metrics.set_many(
+            "gateway",
+            {
+                "request_rate_1m": 150.0,
+                "request_rate_baseline": 20.0,
+                "err_ratio_1m": 0.45,
+                "p99_latency_1m": 1.95,
+            },
+        )
+
+    def crash_loop(self, *, deployed: bool = True) -> None:
+        self.metrics.set_many(
+            "orders",
+            {"restarts_5m": 5.0, "replicas_up": 0.0, "err_ratio_1m": None, "version": "v3-crash"},
+        )
+        self.metrics.set_many("gateway", {"err_ratio_1m": 0.9})
+        self.executor.containers["orders"] = [
+            container(
+                image="relialoop/orders:v3-crash",
+                restart_count=5,
+                started_at=self.clock.now - timedelta(seconds=4),
+                health="starting",
+            )
+        ]
+        if deployed:
+            self.deploys.add("orders", "v3-crash", "v1", self.clock.now - timedelta(seconds=90))
+
+    def memory_leak(self, service: str = "gateway") -> None:
+        self.metrics.set_many(
+            service,
+            {
+                "rss_pct_of_limit": 0.75,
+                "rss_slope_1m": 1_048_576.0,
+                "rss_bytes": 144 * 1024 * 1024,
+                "alert_firing": {"MemoryExhaustionPredicted": 1.0},
+            },
+        )
+
+    def bad_deploy(self) -> None:
+        self.metrics.set_many(
+            "orders", {"err_ratio_1m": 0.26, "p99_latency_1m": 0.49, "version": "v2-bad"}
+        )
+        self.metrics.set_many("gateway", {"err_ratio_1m": 0.27})
+        self.deploys.add("orders", "v2-bad", "v1", self.clock.now - timedelta(seconds=120))
