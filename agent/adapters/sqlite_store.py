@@ -333,6 +333,16 @@ class SqliteStore:
             ).fetchone()
         return _incident(row) if row else None
 
+    def last_closed_incident_for_fingerprint(self, fingerprint: str) -> Incident | None:
+        """The most recently closed incident that included this alert."""
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT i.* FROM incidents i JOIN alerts a ON a.incident_id = i.id "
+                "WHERE a.fingerprint=? AND i.status=? ORDER BY i.closed_at DESC LIMIT 1",
+                (fingerprint, CLOSED),
+            ).fetchone()
+        return _incident(row) if row else None
+
     # --- evidence and diagnoses -------------------------------------------------
 
     def add_evidence(self, bundle: EvidenceBundle, round_number: int) -> None:

@@ -638,3 +638,23 @@ async def test_deploy_events_are_recorded_and_audited(tmp_path: Path):
     assert rig.store.deploys("orders")[0].version == "v2-bad"
     entry = rig.store.audit_entries("orders")[0]
     assert (entry["action"], entry["data"]["override_reason"]) == ("deploy_recorded", "demo")
+
+
+async def test_late_notification_of_the_same_alert_episode_does_not_reopen(tmp_path: Path):
+    rig = PipelineRig(tmp_path)
+    rig.error_spike()
+    await rig.run(gateway_alert())
+    assert rig.incident().status == "closed"
+
+    # The slow-burn alert of the same episode (started before closure) is re-notified.
+    rig.clock.advance(30)
+    await rig.run(gateway_alert())
+    await rig.run(gateway_alert(name="SLOBurnRateSlow", fingerprint="fp-slow"))
+    assert len(rig.store.list_incidents()) == 2  # fp-slow was never part of the incident
+
+    # Same fingerprint, but a new episode that started after the incident closed.
+    later = gateway_alert()
+    later["startsAt"] = (rig.clock.now + timedelta(seconds=60)).isoformat()
+    await rig.run(later)
+    assert len(rig.store.list_incidents()) == 3
+    assert rig.executor.calls[0] == ("restart", "orders", None)

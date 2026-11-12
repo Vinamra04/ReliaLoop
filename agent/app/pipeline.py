@@ -258,6 +258,8 @@ class IncidentPipeline:
         if incident is None:
             if alert.status != "firing":
                 return
+            if await self._is_late_notification(alert):
+                return
             incident = await self._db(
                 self._store.create_incident,
                 service=alert.labels.get("service", "unknown"),
@@ -294,6 +296,26 @@ class IncidentPipeline:
             )
         if alert.status == "resolved":
             await self._close_if_quiet(incident)
+
+    async def _is_late_notification(self, alert: AmAlert) -> bool:
+        """True for an alert episode that began before its incident was closed.
+
+        Slow burn windows keep an alert firing for a while after recovery has
+        been verified. A re-notification of that same episode must not open a
+        new incident; a new episode (a later `startsAt`) must.
+        """
+        closed = await self._db(self._store.last_closed_incident_for_fingerprint, alert.fingerprint)
+        if closed is None or closed.closed_at is None or alert.starts_at > closed.closed_at:
+            return False
+        change = await self._db(self._store.upsert_alert, closed.id, alert, self._clock())
+        if change != "duplicate":
+            await self._event(
+                closed,
+                "alert",
+                f"alert {alert.name} still firing after closure (same episode); no new incident",
+                {"alert": alert.name, "fingerprint": alert.fingerprint},
+            )
+        return True
 
     async def handle_ticket(self, notification: AmWebhook) -> None:
         """Ticket-severity alerts become ticket records only; nothing is remediated."""

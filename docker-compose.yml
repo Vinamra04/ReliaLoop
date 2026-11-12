@@ -158,10 +158,28 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       WEBHOOK_TOKEN: ${WEBHOOK_TOKEN:?run `python -m tools.cli init` first}
       APPROVER_TOKEN: ${APPROVER_TOKEN:?run `python -m tools.cli init` first}
+      AGENT_MODE: ${AGENT_MODE:-dry_run}
+      DIAGNOSIS_MODE: ${DIAGNOSIS_MODE:-rules}
+      AGENT_WORKERS: ${AGENT_WORKERS:-2}
+      PROMETHEUS_URL: http://prometheus:9090
+    volumes:
+      # The Docker socket is root-equivalent access to the host. It is what
+      # lets the agent restart, scale and roll back; see docs/security.md.
+      - /var/run/docker.sock:/var/run/docker.sock
+      - agentdata:/data
+      # Rollbacks rewrite versions.env so Compose stays consistent.
+      - ./deploy:/deploy
+      - ./cmdb:/app/cmdb:ro
+      - ./docs/runbooks:/app/docs/runbooks:ro
+    # The app runs as a non-root user; this group grants it the socket.
+    # Docker Desktop: 0. Linux: the gid of the host's `docker` group.
+    group_add: ["${DOCKER_GID:-0}"]
     tmpfs: [/tmp]
     # `edge` gives the agent a route out for the LLM API; `internal` has none.
     networks: [internal, edge]
     ports: ["127.0.0.1:${AGENT_PORT:-8080}:8080"]
+    depends_on:
+      prometheus: {condition: service_healthy}
     mem_limit: 256m
     cpus: 1.0
 
@@ -229,4 +247,5 @@ volumes:
   pgdata: {}
   promdata: {}
   amdata: {}
+  agentdata: {}
   grafanadata: {}
