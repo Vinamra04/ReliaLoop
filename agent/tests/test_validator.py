@@ -241,3 +241,16 @@ async def test_scale_with_unknown_replica_count_is_rejected():
         rig.metrics.set("replicas_up", "orders", None)
 
     assert (await check(SCALE, setup)).reason == "scale_unknown_replicas"
+
+
+async def test_rollback_of_an_already_reverted_release_is_rejected():
+    def setup(rig: EvidenceRig) -> None:
+        rig.error_spike()
+        rig.deploys.add("orders", "v2-bad", "v1", rig.clock.now - timedelta(seconds=120))
+        rig.deploys.add(
+            "orders", "v1", "v2-bad", rig.clock.now - timedelta(seconds=60), reason="rollback"
+        )
+
+    result = await check(ROLLBACK, setup)
+    assert (result.ok, result.reason) == (False, "rollback_without_recent_deploy")
+    assert "already rolled back" in result.detail

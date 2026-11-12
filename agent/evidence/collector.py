@@ -266,13 +266,20 @@ class EvidenceCollector:
         except Exception:  # the store must never take an incident down
             incomplete.append("deploy_history")
             return []
-        # Rollbacks done by the agent are not "a deploy that might have broken things".
+        # A release that has since been rolled back is no longer "the last
+        # deploy": the version it introduced is not running any more, so it
+        # must not be blamed (or rolled back) again.
+        newest = history[0] if history else None
+        reverted = newest is not None and newest.reason == "rollback"
         releases = [event for event in history if event.reason != "rollback"]
-        latest = releases[0] if releases else None
+        latest = releases[0] if releases and not reverted else None
         values: dict[str, float | str | None] = {
             "seconds_since_last_deploy": (now - latest.ts).total_seconds() if latest else None,
             "last_deploy_version": latest.version if latest else None,
             "previous_version": latest.previous_version if latest else None,
+            "seconds_since_last_rollback": (now - newest.ts).total_seconds()
+            if newest is not None and reverted
+            else None,
         }
         items.extend(
             EvidenceItem(
@@ -280,7 +287,7 @@ class EvidenceCollector:
                 service=service,
                 name=name,
                 value=value,
-                unit="seconds" if name == "seconds_since_last_deploy" else "version",
+                unit="seconds" if name.startswith("seconds_") else "version",
                 observed_at=now,
                 source="deploy_history",
             )

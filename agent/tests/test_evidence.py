@@ -120,7 +120,7 @@ def test_empty_logs():
 
 def test_catalog_loads_with_core_and_optional_entries():
     catalog = load_catalog()
-    assert {"err_ratio_1m", "p99_latency_1m", "restarts_5m", "burn_rate_2m"} <= set(catalog.core())
+    assert {"err_ratio_1m", "p99_latency_1m", "restarts_2m", "burn_rate_2m"} <= set(catalog.core())
     assert {"rss_slope_5m", "db_pool_usage"} <= set(catalog.optional_names())
     assert catalog.get("worker_utilization").applies_to("orders")
     assert not catalog.get("worker_utilization").applies_to("gateway")
@@ -263,15 +263,36 @@ async def test_runtime_evidence_counts_recent_policy_restarts_only():
     assert bundle.value("containers_running", "orders") == 1
 
 
-async def test_deploy_evidence_ignores_agent_rollbacks():
+async def test_recent_deploy_is_reported_with_its_previous_version():
     rig = Rig()
     rig.deploys.add("orders", "v2-bad", "v1", T0 - timedelta(seconds=120))
-    rig.deploys.add("orders", "v1", "v2-bad", T0 - timedelta(seconds=30), reason="rollback")
     bundle = await rig.collector.collect("INC-1", "orders", None)
     assert bundle.value("seconds_since_last_deploy", "orders") == 120
     assert bundle.text("last_deploy_version", "orders") == "v2-bad"
     assert bundle.text("previous_version", "orders") == "v1"
+    assert bundle.value("seconds_since_last_rollback", "orders") is None
+
+
+async def test_a_release_that_was_rolled_back_no_longer_counts_as_the_last_deploy():
+    rig = Rig()
+    rig.deploys.add("orders", "v2-bad", "v1", T0 - timedelta(seconds=120))
+    rig.deploys.add("orders", "v1", "v2-bad", T0 - timedelta(seconds=30), reason="rollback")
+    bundle = await rig.collector.collect("INC-1", "orders", None)
+    assert bundle.value("seconds_since_last_deploy", "orders") is None
+    assert bundle.text("last_deploy_version", "orders") is None
+    assert bundle.text("previous_version", "orders") is None
+    assert bundle.value("seconds_since_last_rollback", "orders") == 30
     assert len(bundle.deploys) == 2
+
+
+async def test_a_new_release_after_a_rollback_counts_again():
+    rig = Rig()
+    rig.deploys.add("orders", "v2-bad", "v1", T0 - timedelta(seconds=300))
+    rig.deploys.add("orders", "v1", "v2-bad", T0 - timedelta(seconds=200), reason="rollback")
+    rig.deploys.add("orders", "v3-crash", "v1", T0 - timedelta(seconds=20))
+    bundle = await rig.collector.collect("INC-1", "orders", None)
+    assert bundle.value("seconds_since_last_deploy", "orders") == 20
+    assert bundle.text("previous_version", "orders") == "v1"
 
 
 async def test_no_deploy_history_yields_none():

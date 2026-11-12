@@ -83,12 +83,12 @@ queries:
     core: true
     description: Memory growth rate over the last minute; steadily positive suggests a leak.
 
-  restarts_5m:
-    expr: 'sum(changes(process_start_time_seconds{service="$service"}[5m]))'
+  restarts_2m:
+    expr: 'sum(changes(process_start_time_seconds{service="$service"}[2m]))'
     unit: count
-    window: 5m
+    window: 2m
     core: true
-    description: Process restarts observed in the last 5 minutes.
+    description: Process restarts observed in the last 2 minutes (same window as the CrashLoop alert).
 
   replicas_up:
     expr: 'count(up{service="$service"} == 1) or vector(0)'

@@ -771,8 +771,36 @@ class IncidentPipeline:
             await self._escalate(incident, "action_failed", result.detail)
             return
         self._metrics.actions.labels(action=kind, outcome="executed").inc()
+        await self._cover_pending_siblings(incident, action)
         await self._transition(incident, State.VERIFYING, f"verifying recovery after {kind}")
         await self._verify(incident, action)
+
+    async def _cover_pending_siblings(self, incident: Incident, action: ProposedAction) -> None:
+        """Other incidents waiting for approval of the action that just ran are covered by it.
+
+        One root cause often pages for several SLOs. A human approves once; the
+        siblings then verify their own recovery instead of asking again.
+        """
+        for row in await self._db(self._store.pending_actions):
+            same = (row["type"], row["target"]) == (action.type.value, action.target_service)
+            if not same or row["incident_id"] == incident.id:
+                continue
+            sibling = await self._db(self._store.get_incident, row["incident_id"])
+            if sibling is None or sibling.state is not State.PENDING_APPROVAL:
+                continue
+            await self._db(self._store.update_action, row["id"], status="covered")
+            await self._audit(
+                "action_covered", sibling.id, {"action_id": row["id"], "covered_by": incident.id}
+            )
+            await self._transition(
+                sibling,
+                State.VERIFYING,
+                f"{row['type']} on {row['target']} was executed for {incident.id}; "
+                "verifying recovery instead of waiting for a second approval",
+                {"covered_by": incident.id},
+            )
+            self._seen.add(sibling.id)
+            await self._queue.put((JOB_VERIFY, sibling.id))
 
     async def _record_rollback(
         self, incident: Incident, action: ProposedAction, now: datetime

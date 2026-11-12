@@ -29,7 +29,7 @@ HEALTHY: dict[str, float | str] = {
     "rss_bytes": 60 * 1024 * 1024,
     "rss_pct_of_limit": 0.31,
     "rss_slope_1m": 0.0,
-    "restarts_5m": 0.0,
+    "restarts_2m": 0.0,
     "replicas_up": 1.0,
     "version": "v1",
 }
@@ -283,7 +283,7 @@ class EvidenceRig:
     def crash_loop(self, *, deployed: bool = True) -> None:
         self.metrics.set_many(
             "orders",
-            {"restarts_5m": 5.0, "replicas_up": 0.0, "err_ratio_1m": None, "version": "v3-crash"},
+            {"restarts_2m": 5.0, "replicas_up": 0.0, "err_ratio_1m": None, "version": "v3-crash"},
         )
         self.metrics.set_many("gateway", {"err_ratio_1m": 0.9})
         self.executor.containers["orders"] = [

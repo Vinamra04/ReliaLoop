@@ -69,7 +69,7 @@ class Signals:
 
 
 def _restarts(sig: Signals) -> float:
-    return max(sig.number("restarts_5m") or 0.0, sig.number("container_restarts") or 0.0)
+    return max(sig.number("restarts_2m") or 0.0, sig.number("container_restarts") or 0.0)
 
 
 def _errors_elevated(sig: Signals, settings: AgentSettings) -> bool:
@@ -160,7 +160,7 @@ def diagnose(bundle: EvidenceBundle, settings: AgentSettings) -> Diagnosis:
     # 2. crash loop
     if restarts >= settings.restarts_threshold:
         sig.cite(
-            "restarts_5m", f"{sig.number('restarts_5m') or 0:.0f} process restarts in 5 minutes"
+            "restarts_2m", f"{sig.number('restarts_2m') or 0:.0f} process restarts in 2 minutes"
         )
         sig.cite(
             "container_restarts",
@@ -203,7 +203,7 @@ def diagnose(bundle: EvidenceBundle, settings: AgentSettings) -> Diagnosis:
         sig.cite("seconds_since_last_deploy", f"deployed {deploy_age:.0f}s ago")
         sig.cite("last_deploy_version", f"running release {deployed}")
         sig.cite("previous_version", f"previous release was {previous}")
-        sig.cite("restarts_5m", "no crash loop")
+        sig.cite("restarts_2m", "no crash loop")
         return _result(
             sig,
             Category.BAD_DEPLOY,
@@ -257,7 +257,7 @@ def diagnose(bundle: EvidenceBundle, settings: AgentSettings) -> Diagnosis:
     # 6. error spike
     if errors_up:
         sig.cite("seconds_since_last_deploy", "no deploy in the last 10 minutes")
-        sig.cite("restarts_5m", "no crash loop")
+        sig.cite("restarts_2m", "no crash loop")
         sig.cite("request_rate_1m", "load is normal")
         return _result(
             sig,

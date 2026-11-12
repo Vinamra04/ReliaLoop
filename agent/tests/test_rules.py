@@ -101,7 +101,7 @@ async def test_crash_loop_wins_over_everything_else():
 async def test_crash_loop_detected_from_the_runtime_when_metrics_are_gone():
     def setup(rig: EvidenceRig) -> None:
         rig.crash_loop()
-        rig.metrics.set("restarts_5m", "orders", None)
+        rig.metrics.set("restarts_2m", "orders", None)
 
     diagnosis, _ = await run(setup)
     assert diagnosis.category is C.CRASH_LOOP
@@ -225,3 +225,18 @@ async def test_diagnosis_is_deterministic():
     first, _ = await run(lambda r: r.bad_deploy())
     second, _ = await run(lambda r: r.bad_deploy())
     assert first == second
+
+
+async def test_error_spike_shortly_after_a_rollback_is_not_blamed_on_the_reverted_release():
+    """Regression: seen live. A reverted release and its old restarts are stale evidence."""
+
+    def setup(rig: EvidenceRig) -> None:
+        rig.error_spike()
+        rig.deploys.add("orders", "v3-crash", "v1", rig.clock.now - timedelta(seconds=240))
+        rig.deploys.add(
+            "orders", "v1", "v3-crash", rig.clock.now - timedelta(seconds=180), reason="rollback"
+        )
+
+    diagnosis, _ = await run(setup)
+    assert diagnosis.category is C.ERROR_SPIKE
+    assert diagnosis.action.type is A.RESTART

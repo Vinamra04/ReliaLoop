@@ -658,3 +658,24 @@ async def test_late_notification_of_the_same_alert_episode_does_not_reopen(tmp_p
     await rig.run(later)
     assert len(rig.store.list_incidents()) == 3
     assert rig.executor.calls[0] == ("restart", "orders", None)
+
+
+async def test_one_approval_covers_sibling_incidents_waiting_for_the_same_rollback(tmp_path: Path):
+    rig = PipelineRig(tmp_path)
+    rig.bad_deploy()
+    await rig.page(gateway_alert())
+    await rig.page(orders_alert())
+    await rig.settle()
+    assert [rig.incident(i).state for i in (0, 1)] == [State.PENDING_APPROVAL] * 2
+
+    await rig.pipeline.approve(rig.incident(0).id, "alice")
+    await rig.settle()
+
+    assert [rig.incident(i).state for i in (0, 1)] == [State.RESOLVED, State.RESOLVED]
+    assert rig.executor.calls == [("rollback", "orders", "v1")]
+    assert rig.store.pending_actions() == []
+    sibling = rig.incident(1)
+    assert rig.store.actions(sibling.id)[0]["status"] == "covered"
+    assert "ACTING" not in rig.states(sibling.id)
+    covered = [e for e in rig.store.audit_entries(sibling.id) if e["action"] == "action_covered"]
+    assert covered[0]["data"]["covered_by"] == rig.incident(0).id

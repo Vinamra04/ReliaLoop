@@ -44,9 +44,14 @@ def _check_rollback(
     action: ProposedAction, bundle: EvidenceBundle, settings: AgentSettings
 ) -> ValidationResult | ProposedAction:
     target = action.target_service
-    releases = [d for d in bundle.deploys if d.service == target and d.reason != "rollback"]
+    history = [d for d in bundle.deploys if d.service == target]
+    releases = [d for d in history if d.reason != "rollback"]
     if not releases:
         return _fail("rollback_without_recent_deploy", f"no deploy of {target} is recorded")
+    if history[0].reason == "rollback":
+        return _fail(
+            "rollback_without_recent_deploy", f"the last deploy of {target} was already rolled back"
+        )
     latest = releases[0]
     age = (bundle.collected_at - latest.ts).total_seconds()
     if age > settings.rollback_lookback_s:

@@ -20,7 +20,8 @@ TRANSITIONS: dict[State, frozenset[State]] = {
     _S.POLICY_DECIDED: frozenset(
         {_S.ACTING, _S.PENDING_APPROVAL, _S.DRY_RUN_COMPLETE, _S.VERIFYING, _S.ESCALATED}
     ),
-    _S.PENDING_APPROVAL: frozenset({_S.ACTING, _S.REJECTED, _S.ESCALATED}),
+    # VERIFYING directly: another incident executed the same action meanwhile.
+    _S.PENDING_APPROVAL: frozenset({_S.ACTING, _S.VERIFYING, _S.REJECTED, _S.ESCALATED}),
     _S.ACTING: frozenset({_S.VERIFYING, _S.ESCALATED}),
     _S.VERIFYING: frozenset({_S.RESOLVED, _S.FAILED_VERIFICATION, _S.ESCALATED}),
     # One re-plan is allowed: back to evidence collection, otherwise escalate.
