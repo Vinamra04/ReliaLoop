@@ -28,7 +28,7 @@ receivers:
         http_config:
           authorization:
             type: Bearer
-            credentials_file: /etc/alertmanager/secrets/webhook_token
+            credentials_file: /run/secrets/webhook_token
 
   - name: tickets
     webhook_configs:
@@ -37,7 +37,7 @@ receivers:
         http_config:
           authorization:
             type: Bearer
-            credentials_file: /etc/alertmanager/secrets/webhook_token
+            credentials_file: /run/secrets/webhook_token
 
 inhibit_rules:
   # 1. A page already covers the same SLO: do not also raise its ticket-level
