@@ -9,6 +9,8 @@ ENV_FILE = REPO_ROOT / ".env"
 ENV_EXAMPLE = REPO_ROOT / ".env.example"
 SECRETS_DIR = REPO_ROOT / ".secrets"
 WEBHOOK_TOKEN_FILE = SECRETS_DIR / "webhook_token"
+VERSIONS_FILE = REPO_ROOT / "deploy" / "versions.env"
+DASHBOARDS_DIR = REPO_ROOT / "observability" / "grafana" / "dashboards"
 RUNTIME_DIRS = (
     REPO_ROOT / "postmortems",
     REPO_ROOT / "eval" / "results",
