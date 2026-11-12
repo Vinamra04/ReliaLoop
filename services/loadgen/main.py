@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import math
 import secrets
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from contextlib import AsyncExitStack, asynccontextmanager
 from typing import Any
 
 import httpx
@@ -45,14 +46,26 @@ def build_app(
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        # Unlike the gateway, the client keeps connections alive: it models
-        # many users behind a few long-lived connections to the edge.
-        async with httpx.AsyncClient(
-            base_url=settings.target_url,
-            timeout=settings.request_timeout_s,
-            transport=transport,
-        ) as client:
-            engine = LoadEngine(settings, client, rate, record)
+        # Unlike the gateway, the clients keep connections alive: they model
+        # many users behind a few long-lived connections to the edge. The
+        # pools together are sized to the in-flight cap so requests never
+        # queue inside a client, which would hide server latency.
+        per_shard = math.ceil(settings.max_in_flight / settings.client_shards)
+        async with AsyncExitStack() as stack:
+            clients = [
+                await stack.enter_async_context(
+                    httpx.AsyncClient(
+                        base_url=settings.target_url,
+                        timeout=settings.request_timeout_s,
+                        limits=httpx.Limits(
+                            max_connections=per_shard, max_keepalive_connections=per_shard
+                        ),
+                        transport=transport,
+                    )
+                )
+                for _ in range(settings.client_shards)
+            ]
+            engine = LoadEngine(settings, clients, rate, record)
             holder["engine"] = engine
             app.state.engine = engine
             runner = asyncio.create_task(engine.run()) if autostart else None

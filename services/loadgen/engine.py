@@ -22,7 +22,8 @@ from services.loadgen.settings import LoadgenSettings
 CUSTOMERS = ("ada", "grace", "linus", "margaret", "dennis", "barbara", "ken", "radia")
 SKUS = ("KB-101", "MS-220", "MN-27Q", "HD-4TB", "CB-USBC", "WC-1080", "HS-PRO", "DK-TB4")
 MAX_SLEEP_S = 0.5
-CATCH_UP_LIMIT_S = 1.0
+# Never burst more than this much backlog after falling behind schedule.
+CATCH_UP_LIMIT_S = 0.1
 
 # Called with (outcome, duration_seconds) for every finished or dropped request.
 Recorder = Callable[[str, float], None]
@@ -84,13 +85,14 @@ class LoadEngine:
     def __init__(
         self,
         settings: LoadgenSettings,
-        client: httpx.AsyncClient,
+        clients: list[httpx.AsyncClient],
         rate: RateController,
         record: Recorder,
         rng: random.Random | None = None,
     ) -> None:
         self._settings = settings
-        self._client = client
+        self._clients = clients
+        self._sent = 0
         self._rate = rate
         self._record = record
         self._rng = rng or random.Random()  # noqa: S311 - synthetic traffic, not security
@@ -115,17 +117,17 @@ class LoadEngine:
     async def send_one(self) -> None:
         """Send one request and record its outcome."""
         started = time.perf_counter()
+        client = self._clients[self._sent % len(self._clients)]
+        self._sent += 1
         try:
             if self._rng.random() >= self._settings.read_fraction:
-                response = await self._client.post("/api/orders", json=self._new_order())
+                response = await client.post("/api/orders", json=self._new_order())
                 if response.status_code == 201:
                     self._known_ids.append(response.json()["id"])
             elif self._known_ids and self._rng.random() < 0.5:
-                response = await self._client.get(
-                    f"/api/orders/{self._rng.choice(self._known_ids)}"
-                )
+                response = await client.get(f"/api/orders/{self._rng.choice(self._known_ids)}")
             else:
-                response = await self._client.get("/api/orders", params={"limit": 10})
+                response = await client.get("/api/orders", params={"limit": 10})
             outcome = classify(response.status_code)
         except httpx.TimeoutException:
             outcome = "timeout"
@@ -155,15 +157,18 @@ class LoadEngine:
                 now = time.monotonic()
                 if now - next_at > CATCH_UP_LIMIT_S:
                     next_at = now  # fell badly behind: do not burst to catch up
-                # Sleep in short slices so a rate change takes effect promptly.
-                while (delay := next_at - time.monotonic()) > 0:
-                    await asyncio.sleep(min(delay, MAX_SLEEP_S))
-                    if self._rate.current() != rps:
-                        break
-                else:
-                    self._spawn()
+                delay = next_at - now
+                if delay > MAX_SLEEP_S:
+                    # Long gap (low rate): wake early so a rate change takes effect
+                    # promptly. Arrivals are memoryless, so re-drawing the wait
+                    # from "now" leaves the arrival process unchanged.
+                    await asyncio.sleep(MAX_SLEEP_S)
+                    next_at = time.monotonic()
                     continue
-                next_at = time.monotonic()
+                # Always yield, even when behind schedule: without this the loop
+                # would spawn requests forever and never let them run.
+                await asyncio.sleep(max(delay, 0.0))
+                self._spawn()
         finally:
             for task in list(self._tasks):
                 task.cancel()

@@ -21,3 +21,6 @@ class LoadgenSettings(ServiceSettings):
     # dropped (and counted) instead of piling up without bound.
     max_in_flight: int = Field(default=600, gt=0)
     known_ids: int = Field(default=200, gt=0)
+    # Requests are spread over several HTTP clients: one pool holding hundreds
+    # of connections is slow enough in the client library to stall the generator.
+    client_shards: int = Field(default=8, gt=0)

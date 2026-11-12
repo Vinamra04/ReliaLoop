@@ -63,7 +63,7 @@ async def run_engine(handler, count: int, **overrides):
     ) as client:
         engine = LoadEngine(
             cfg,
-            client,
+            [client],
             RateController(20, 500),
             lambda outcome, _: outcomes.update([outcome]),
             rng=random.Random(11),
@@ -100,7 +100,7 @@ async def test_engine_paces_to_the_configured_rate_and_drops_when_full():
     ) as client:
         engine = LoadEngine(
             cfg,
-            client,
+            [client],
             RateController(200, 500),
             lambda outcome, _: outcomes.update([outcome]),
             rng=random.Random(5),
