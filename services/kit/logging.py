@@ -55,7 +55,7 @@ def current_request_id() -> str | None:
 def _incoming_request_id(scope: Scope) -> str:
     for name, value in scope.get("headers", []):
         if name == REQUEST_ID_HEADER.encode():
-            candidate = value.decode("latin-1")
+            candidate: str = value.decode("latin-1")
             # Only accept well-formed ids: the value ends up in logs.
             if _SAFE_REQUEST_ID.match(candidate):
                 return candidate
