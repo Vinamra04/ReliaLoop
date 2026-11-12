@@ -11,6 +11,13 @@ SECRETS_DIR = REPO_ROOT / ".secrets"
 WEBHOOK_TOKEN_FILE = SECRETS_DIR / "webhook_token"
 VERSIONS_FILE = REPO_ROOT / "deploy" / "versions.env"
 DASHBOARDS_DIR = REPO_ROOT / "observability" / "grafana" / "dashboards"
+SLO_DIR = REPO_ROOT / "slo"
+SLO_SCHEMA_FILE = SLO_DIR / "schema.json"
+CMDB_FILE = REPO_ROOT / "cmdb" / "services.yaml"
+PROMETHEUS_DIR = REPO_ROOT / "observability" / "prometheus"
+GENERATED_RULES_DIR = PROMETHEUS_DIR / "rules" / "generated"
+ALERTMANAGER_DIR = REPO_ROOT / "observability" / "alertmanager"
+SLO_DESIGN_DOC = REPO_ROOT / "docs" / "slo-design.md"
 RUNTIME_DIRS = (
     REPO_ROOT / "postmortems",
     REPO_ROOT / "eval" / "results",

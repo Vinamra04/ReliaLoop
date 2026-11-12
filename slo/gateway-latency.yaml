@@ -1,0 +1,14 @@
+name: gateway-latency
+service: gateway
+description: Share of gateway API requests answered within 500 ms
+sli:
+  type: latency
+  histogram: http_request_duration_seconds{route!~"/healthz|/readyz|/metrics|/chaos.*"}
+  threshold_seconds: 0.5
+objective: 95
+window: 30d
+alerting:
+  profile: demo
+  min_traffic_rps: 1
+  runbook: gateway-latency
+  owner: platform-team

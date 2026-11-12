@@ -1,0 +1,14 @@
+name: orders-availability
+service: orders
+description: Non-5xx share of orders API requests
+sli:
+  type: availability
+  total: http_requests_total{route!~"/healthz|/readyz|/metrics|/chaos.*"}
+  errors: http_requests_total{status=~"5..", route!~"/healthz|/readyz|/metrics|/chaos.*"}
+objective: 99.5
+window: 30d
+alerting:
+  profile: demo
+  min_traffic_rps: 1
+  runbook: orders-availability
+  owner: platform-team

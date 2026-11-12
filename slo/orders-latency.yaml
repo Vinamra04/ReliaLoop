@@ -1,0 +1,14 @@
+name: orders-latency
+service: orders
+description: Share of orders API requests answered within 300 ms
+sli:
+  type: latency
+  histogram: http_request_duration_seconds{route!~"/healthz|/readyz|/metrics|/chaos.*"}
+  threshold_seconds: 0.3
+objective: 95
+window: 30d
+alerting:
+  profile: demo
+  min_traffic_rps: 1
+  runbook: orders-latency
+  owner: platform-team

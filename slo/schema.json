@@ -1,0 +1,162 @@
+{
+  "$defs": {
+    "Alerting": {
+      "additionalProperties": false,
+      "properties": {
+        "min_traffic_rps": {
+          "description": "No alert below this request rate.",
+          "minimum": 0,
+          "title": "Min Traffic Rps",
+          "type": "number"
+        },
+        "owner": {
+          "minLength": 1,
+          "title": "Owner",
+          "type": "string"
+        },
+        "profile": {
+          "enum": [
+            "demo",
+            "production"
+          ],
+          "title": "Profile",
+          "type": "string"
+        },
+        "runbook": {
+          "pattern": "^[a-z0-9-]+$",
+          "title": "Runbook",
+          "type": "string"
+        }
+      },
+      "required": [
+        "profile",
+        "min_traffic_rps",
+        "runbook",
+        "owner"
+      ],
+      "title": "Alerting",
+      "type": "object"
+    },
+    "AvailabilitySli": {
+      "additionalProperties": false,
+      "description": "Good events = total minus errors.",
+      "properties": {
+        "errors": {
+          "description": "Selector counting bad events.",
+          "title": "Errors",
+          "type": "string"
+        },
+        "total": {
+          "description": "Selector counting all valid events.",
+          "title": "Total",
+          "type": "string"
+        },
+        "type": {
+          "const": "availability",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "total",
+        "errors"
+      ],
+      "title": "AvailabilitySli",
+      "type": "object"
+    },
+    "LatencySli": {
+      "additionalProperties": false,
+      "description": "Good events = requests faster than the threshold.",
+      "properties": {
+        "histogram": {
+          "description": "Histogram base name with optional matchers.",
+          "title": "Histogram",
+          "type": "string"
+        },
+        "threshold_seconds": {
+          "description": "Must be an existing bucket boundary.",
+          "exclusiveMinimum": 0,
+          "title": "Threshold Seconds",
+          "type": "number"
+        },
+        "type": {
+          "const": "latency",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "histogram",
+        "threshold_seconds"
+      ],
+      "title": "LatencySli",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "One service level objective.",
+  "properties": {
+    "alerting": {
+      "$ref": "#/$defs/Alerting"
+    },
+    "description": {
+      "minLength": 1,
+      "title": "Description",
+      "type": "string"
+    },
+    "name": {
+      "pattern": "^[a-z][a-z0-9-]*$",
+      "title": "Name",
+      "type": "string"
+    },
+    "objective": {
+      "description": "Percent of good events.",
+      "exclusiveMaximum": 100,
+      "exclusiveMinimum": 50,
+      "title": "Objective",
+      "type": "number"
+    },
+    "service": {
+      "pattern": "^[a-z][a-z0-9-]*$",
+      "title": "Service",
+      "type": "string"
+    },
+    "sli": {
+      "discriminator": {
+        "mapping": {
+          "availability": "#/$defs/AvailabilitySli",
+          "latency": "#/$defs/LatencySli"
+        },
+        "propertyName": "type"
+      },
+      "oneOf": [
+        {
+          "$ref": "#/$defs/AvailabilitySli"
+        },
+        {
+          "$ref": "#/$defs/LatencySli"
+        }
+      ],
+      "title": "Sli"
+    },
+    "window": {
+      "description": "Production SLO window.",
+      "pattern": "^\\d+[smhdw]$",
+      "title": "Window",
+      "type": "string"
+    }
+  },
+  "required": [
+    "name",
+    "service",
+    "description",
+    "sli",
+    "objective",
+    "window",
+    "alerting"
+  ],
+  "title": "SloSpec",
+  "type": "object"
+}
