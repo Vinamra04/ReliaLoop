@@ -1,0 +1,53 @@
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+
+# Tool caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+
+# Secrets and local config (never commit)
+.env
+.env.*
+!.env.example
+.secrets/
+
+# Runtime output
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite3
+postmortems/
+eval/results/
+data/
+logs/
+*.log
+.llm_cache/
+
+# Frontend
+node_modules/
+console/web/dist/
+console/web/test-results/
+console/web/playwright-report/
+console/web/.vite/
+
+# Editors / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Claude Code local settings
+.claude/settings.local.json

@@ -1,0 +1,11 @@
+# Force LF everywhere so shell scripts and YAML work inside Linux containers
+# even when the repo is checked out on Windows.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.db binary

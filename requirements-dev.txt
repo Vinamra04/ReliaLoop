@@ -1,0 +1,17 @@
+# Host-side development tooling and the CLI's runtime dependencies.
+# Exact pins, resolved 2026-11-12 by installing into a clean venv.
+ruff==0.17.4
+mypy==2.4.1
+pytest==9.2.0
+pytest-asyncio==1.4.1.post1
+pytest-cov==7.1.0
+respx==0.23.1
+pre-commit==4.7.0
+pip-audit==2.10.1
+typer==0.29.1
+rich==15.0.0
+pydantic==2.14.3
+pydantic-settings==2.16.2
+PyYAML==6.0.3
+types-PyYAML==6.0.12.20261111
+httpx==0.28.1

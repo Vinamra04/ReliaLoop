@@ -1,0 +1,51 @@
+[project]
+name = "relialoop"
+version = "0.1.0"
+description = "SLOs as code, burn-rate alerting, chaos injection and an evaluated AIOps remediation agent"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.11"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+extend-exclude = ["console/web", "observability/prometheus/rules/generated"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "N", "S", "C4", "SIM", "RUF", "ASYNC", "PT", "T20"]
+ignore = [
+  "S101",  # assert is the idiom in pytest
+]
+
+[tool.ruff.lint.per-file-ignores]
+"**/tests/**" = ["S105", "S106", "S108", "S311"]
+"tools/cli.py" = ["B008"]  # typer uses call-in-default for options
+
+[tool.ruff.lint.isort]
+known-first-party = ["agent", "tools", "libs", "services", "console", "eval"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unreachable = true
+files = ["agent", "tools"]
+exclude = ["(^|/)tests/"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+pythonpath = ["."]
+testpaths = ["tools", "libs", "services", "agent", "eval", "console/api"]
+addopts = "-ra --strict-markers --import-mode=importlib"
+markers = [
+  "live_llm: calls the real LLM provider; skipped unless explicitly selected",
+]
+
+[tool.coverage.run]
+branch = true
+source = ["agent", "tools", "libs", "services", "eval", "console/api"]
+omit = ["*/tests/*"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
