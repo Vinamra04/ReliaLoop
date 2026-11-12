@@ -7,6 +7,22 @@ CLI := $(PY) -m tools.cli
 
 .DEFAULT_GOAL := help
 .PHONY: help init setup lint format typecheck test build up down ps logs traffic chaos clear-chaos dashboards
+.PHONY: gen-rules validate test-rules verify-pipeline silence
+
+gen-rules: ## Regenerate Prometheus rules, SLO schema and docs/slo-design.md from slo/*.yaml
+	$(CLI) slo generate
+
+validate: ## Validate SLO specs, generated files and Prometheus config (promtool)
+	$(CLI) slo validate
+
+test-rules: ## Run promtool rule tests and amtool config and routing tests
+	$(CLI) test-rules
+
+verify-pipeline: ## Check the live alerting pipeline end to end
+	$(CLI) verify-pipeline
+
+silence: ## Silence a service: make silence SERVICE=orders MINUTES=15
+	$(CLI) silence --service $(SERVICE) --minutes $(or $(MINUTES),15)
 
 help: ## Show documented targets
 	@grep -E '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | sed -E 's/:.*## /\t/' | sort

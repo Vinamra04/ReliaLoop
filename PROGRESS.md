@@ -22,9 +22,9 @@ The plan is `CLAUDE.md`. On this machine use `.venv/Scripts/python.exe -m tools.
 - [x] 2.1 SLO specs, pydantic models, generator, validator, promtool integration
 - [x] 2.2 Generated + handwritten rules; `promtool test rules` suites
 - [x] 2.3 Alertmanager config (routes, receivers, 3 inhibitions), credentials file, amtool tests, webhook sink
-- [ ] 2.4 Dashboards 2 (SLO & Error Budget) and 4 (Pipeline Health) -- NOT STARTED in repo (definitions still to be added to tools/dashboards/definitions.py)
-- [ ] 2.5 `verify-pipeline` DONE, `silence` DONE, `docs/slo-design.md` DONE; STILL TO DO: runbooks, `docs/alerting.md`, Makefile targets for slo/test-rules/verify-pipeline/silence
-- [ ] 2.6 Done-when checks shown; tag `phase-2-complete`
+- [x] 2.4 Dashboards 2 (SLO & Error Budget) and 4 (Pipeline Health)
+- [x] 2.5 `verify-pipeline`, `silence`, runbooks, `docs/slo-design.md`, `docs/alerting.md`
+- [x] 2.6 Done-when checks shown; tag `phase-2-complete`
 
 ## Phase 3 — Agent core, rule-based mode
 - [ ] 3.1 Package structure, ports, config, store + migrations, CMDB, state machine, queue/workers, webhooks, metrics
@@ -82,6 +82,14 @@ The plan is `CLAUDE.md`. On this machine use `.venv/Scripts/python.exe -m tools.
 - **Loadgen spreads requests over 8 HTTP client pools and has 2 CPUs**: a single httpx pool with hundreds of connections stalled the generator under overload (found while tuning).
 - **Dashboards are generated** from `tools/dashboards/definitions.py` (`dashboards generate`, with a staleness test) instead of hand-written JSON.
 - **Host ports are configurable** (`*_PORT` in `.env`). On the dev machine port 3000 is used by another program, so the local `.env` sets `GRAFANA_PORT=3001`; the default stays 3000.
+
+- **Alert severities.** `MemoryExhaustionPredicted` pages (only signal before impact); `CrashLoop` and `SaturationHigh` are tickets. Inhibition rule 1 targets only `class=symptom` so cause alerts are never hidden.
+- **`ServiceDown` uses a CMDB-generated `service:managed:info` series** (`unless on(service) up == 1`) so it also fires when a restarting container vanishes from DNS discovery.
+- **Availability SLI uses `or vector(0)`** so a service with no 5xx series reports 0 instead of no data.
+- **Rules for one SLO live in a single group** so alerts see burn rates from the same evaluation cycle.
+- **Agent reuses `services/kit`** (logging, metrics middleware, health). The Phase 2 agent is only the authenticated webhook receiver; alerts labelled `relialoop_test=true` are counted but never become incidents.
+- **Runbook "what the agent does" sections describe the designed behaviour**; re-check them against the built agent in Phase 7.
+- **Webhook token is mounted at `/run/secrets/webhook_token`** in Alertmanager.
 
 ## Known issues
 - `fastapi.testclient` prints a deprecation warning asking for `httpx2`; tests pass. Not changed because the plan locks `httpx`.
