@@ -7,6 +7,7 @@ phase; `--help` always lists exactly what exists.
 
 from __future__ import annotations
 
+import contextlib
 import json
 from enum import StrEnum
 from typing import Any
@@ -16,7 +17,7 @@ import typer
 import yaml
 from rich.console import Console
 
-from tools import containers, init_env, paths, stack
+from tools import containers, init_env, paths, pipeline, stack
 from tools.dashboards import generate as dashboard_generator
 from tools.slo import build as slo_build
 from tools.slo.models import SpecError
@@ -116,10 +117,17 @@ def up(
         env = stack.load_env()
     except stack.StackError as exc:
         raise _fail(str(exc)) from exc
+    # Config files are bind-mounted, so containers that were already running
+    # must be told to re-read them.
+    for key in ("PROMETHEUS_PORT", "ALERTMANAGER_PORT"):
+        with contextlib.suppress(httpx.HTTPError):
+            httpx.post(f"{stack.local_url(key, env)}/-/reload", timeout=HTTP_TIMEOUT_S)
     console.print("[green]stack is healthy[/green]")
     for name, key in (
         ("gateway", "GATEWAY_PORT"),
+        ("agent", "AGENT_PORT"),
         ("prometheus", "PROMETHEUS_PORT"),
+        ("alertmanager", "ALERTMANAGER_PORT"),
         ("grafana", "GRAFANA_PORT"),
     ):
         console.print(f"  {name:<11} {stack.local_url(key, env)}")
@@ -321,6 +329,72 @@ def test_rules() -> None:
         passed &= _report(f"route: {case['name']} -> {case['receiver']}", result)
     if not passed:
         raise typer.Exit(code=1)
+
+
+def _endpoints(env: dict[str, str]) -> pipeline.Endpoints:
+    return pipeline.Endpoints(
+        prometheus=stack.local_url("PROMETHEUS_PORT", env),
+        alertmanager=stack.local_url("ALERTMANAGER_PORT", env),
+        agent=stack.local_url("AGENT_PORT", env),
+    )
+
+
+@app.command("verify-pipeline")
+def verify_pipeline() -> None:
+    """Check the alerting pipeline end to end: targets, Watchdog, routing and webhook auth."""
+    try:
+        env = stack.load_env()
+    except stack.StackError as exc:
+        raise _fail(str(exc)) from exc
+    with httpx.Client(timeout=HTTP_TIMEOUT_S) as client:
+        checks = pipeline.verify_pipeline(_endpoints(env), env["WEBHOOK_TOKEN"], client)
+    for check in checks:
+        mark = "[green]ok[/green]  " if check.ok else "[red]FAIL[/red]"
+        console.print(f"{mark}  {check.name}: ", end="")
+        console.print(check.detail, markup=False, highlight=False)
+    if not all(check.ok for check in checks):
+        raise typer.Exit(code=1)
+
+
+@app.command()
+def silence(
+    service: str = typer.Option("", help="Silence every alert of this service."),
+    minutes: int = typer.Option(15, min=1, max=1440, help="How long the silence lasts."),
+    comment: str = typer.Option("planned maintenance", help="Why (shown in Alertmanager)."),
+    list_: bool = typer.Option(False, "--list", help="List active and pending silences."),
+    expire: str = typer.Option("", help="Expire the silence with this id."),
+) -> None:
+    """Create, list or expire Alertmanager silences (for planned maintenance)."""
+    try:
+        alertmanager = stack.local_url("ALERTMANAGER_PORT", stack.load_env())
+    except stack.StackError as exc:
+        raise _fail(str(exc)) from exc
+    try:
+        with httpx.Client(timeout=HTTP_TIMEOUT_S) as client:
+            if list_:
+                silences = pipeline.list_silences(client, alertmanager)
+                for item in silences:
+                    matchers = ", ".join(f"{m['name']}={m['value']}" for m in item["matchers"])
+                    console.print(
+                        f"{item['id']}  {item['status']['state']:<8} until {item['endsAt']}  "
+                        f"{matchers}  ({item['comment']})",
+                        markup=False,
+                        highlight=False,
+                    )
+                if not silences:
+                    console.print("no active silences")
+            elif expire:
+                pipeline.expire_silence(client, alertmanager, expire)
+                console.print(f"expired silence {expire}")
+            elif service:
+                silence_id = pipeline.create_silence(
+                    client, alertmanager, service, minutes, comment
+                )
+                console.print(f"silenced service={service} for {minutes} min (id {silence_id})")
+            else:
+                raise _fail("give --service, --list or --expire")
+    except httpx.HTTPError as exc:
+        raise _fail(f"Alertmanager request failed: {type(exc).__name__}: {exc}") from exc
 
 
 @dashboards_app.command("generate")
