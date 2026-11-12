@@ -19,11 +19,11 @@ The plan is `CLAUDE.md`. On this machine use `.venv/Scripts/python.exe -m tools.
 - [x] 1.7 Done-when checks shown; tag `phase-1-complete`
 
 ## Phase 2 — SLOs, alerting, Alertmanager
-- [ ] 2.1 SLO specs, pydantic models, generator, validator, promtool integration
-- [ ] 2.2 Generated + handwritten rules; `promtool test rules` suites
-- [ ] 2.3 Alertmanager config (routes, receivers, 3 inhibitions), credentials file, amtool tests, webhook sink
-- [ ] 2.4 Dashboards 2 (SLO & Error Budget) and 4 (Pipeline Health)
-- [ ] 2.5 `verify-pipeline`, runbooks, `docs/slo-design.md`, `docs/alerting.md`
+- [x] 2.1 SLO specs, pydantic models, generator, validator, promtool integration
+- [x] 2.2 Generated + handwritten rules; `promtool test rules` suites
+- [x] 2.3 Alertmanager config (routes, receivers, 3 inhibitions), credentials file, amtool tests, webhook sink
+- [ ] 2.4 Dashboards 2 (SLO & Error Budget) and 4 (Pipeline Health) -- NOT STARTED in repo (definitions still to be added to tools/dashboards/definitions.py)
+- [ ] 2.5 `verify-pipeline` DONE, `silence` DONE, `docs/slo-design.md` DONE; STILL TO DO: runbooks, `docs/alerting.md`, Makefile targets for slo/test-rules/verify-pipeline/silence
 - [ ] 2.6 Done-when checks shown; tag `phase-2-complete`
 
 ## Phase 3 — Agent core, rule-based mode
