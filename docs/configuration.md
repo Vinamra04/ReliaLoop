@@ -134,3 +134,68 @@ Consequences for the fault scenarios:
 |---|---|
 | `v2-bad` at 20 rps | orders 5xx ratio 26%, gateway 5xx ratio 27%, gateway p95 0.49 s |
 | `v3-crash` | 4 container restarts in about 50 s |
+
+## Agent
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `AGENT_MODE` | `dry_run` | `observe` (diagnose only), `dry_run` (decide and record, execute nothing) or `enforce` (act through validator and policy). Read at startup; `python -m tools.cli mode …` changes it until the next restart |
+| `DIAGNOSIS_MODE` | `rules` | `rules` (deterministic decision tree) or `llm` |
+| `AGENT_WORKERS` | `2` | Incidents processed in parallel |
+| `AGENT_QUEUE_SIZE` | `100` | Bounded incident queue; when full, webhooks get 429 |
+| `MAX_BODY_BYTES` | `262144` | Largest accepted request body (413 above) |
+| `MAX_ALERTS_PER_WEBHOOK` | `100` | Most alerts accepted in one notification |
+| `PROMETHEUS_URL` | `http://prometheus:9090` | Evidence and verification queries |
+| `DB_PATH` | `/data/agent.db` | SQLite store (named volume `agentdata`) |
+| `CMDB_PATH` | `/app/cmdb/services.yaml` | Service catalog (read-only mount) |
+| `POLICY_PATH` | `/app/agent/policy.yaml` | Policy file (in the image) |
+| `RUNBOOKS_DIR` | `/app/docs/runbooks` | Runbooks served at `/runbooks/<name>` |
+| `VERSIONS_FILE` | `/deploy/versions.env` | Rewritten by a rollback |
+| `COMPOSE_PROJECT` | `relialoop` | Only containers of this Compose project are ever touched |
+| `HTTP_TIMEOUT_S` | `5` | Timeout of outbound HTTP calls |
+| `DOCKER_GID` | `0` | Group that owns the Docker socket inside containers (Compose `group_add`). Docker Desktop: 0; Linux: gid of the `docker` group |
+
+### Evidence
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `EVIDENCE_TIMEOUT_S` | `10` | Overall limit for collecting a bundle; on timeout the bundle is marked incomplete |
+| `LOG_LINES` / `LOG_SINCE_S` | `200` / `300` | Log lines and look-back per service |
+| `LOG_MAX_BYTES` / `LOG_TAIL_LINES` | `4096` / `20` | Size cap and tail length of a log summary |
+| `DEPLOY_HISTORY_LIMIT` | `5` | Deploy events included per service |
+
+### Rule-based diagnosis thresholds
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `RESTARTS_THRESHOLD` | `2` | Restarts in 2 minutes that count as a crash loop |
+| `DEPLOY_RECENT_S` | `600` | A deploy this recent, with errors or latency up, is a bad deploy |
+| `ERROR_RATIO_ELEVATED` | `0.05` | 1-minute 5xx ratio that counts as elevated |
+| `LATENCY_P99_ELEVATED_S` | `1.0` | 1-minute p99 that counts as elevated |
+| `MEMORY_PCT_THRESHOLD` | `0.7` | Share of the memory limit above which rising memory is a leak |
+| `SATURATION_UTILIZATION` | `0.9` | Worker utilization that counts as saturated |
+| `LOAD_SURGE_FACTOR` | `1.5` | Request rate relative to 10 minutes ago that counts as a surge |
+
+### Validator, execution and verification
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `MIN_CONFIDENCE` | `0.6` | Diagnoses below this are rejected and escalated |
+| `ROLLBACK_LOOKBACK_S` | `1800` | A rollback needs a deploy of the target this recent |
+| `ACTION_TIMEOUT_S` | `90` | Time limit of one action, including waiting for health |
+| `VERIFY_WAIT_S` | `20` | Wait after an action before the first check |
+| `VERIFY_INTERVAL_S` | `10` | Time between checks |
+| `VERIFY_TIMEOUT_S` | `120` | Give up verifying after this long |
+| `VERIFY_CONSECUTIVE` | `3` | Healthy checks in a row needed to call it recovered |
+| `FAST_BURN_FACTOR` / `RECOVERY_BURN_FRACTION` | `14.4` / `0.5` | Recovered when the short-window burn rate is below factor x fraction (7.2) |
+| `VERIFY_BURN_WINDOW` | `30s` | Burn-rate window used for verification |
+| `MAX_REPLANS` | `1` | Re-plans after a failed verification before escalating |
+
+Risk classes, approval timeout and action limits are not environment
+variables: they live in `agent/policy.yaml`, which is reviewed like code.
+
+## Deploy gate
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `GATE_MIN_BUDGET` | `0.25` | A deploy is blocked when any SLO of the service has less error budget left than this |

@@ -494,8 +494,190 @@ def pipeline_health() -> dict[str, Any]:
     )
 
 
+def incidents_agent() -> dict[str, Any]:
+    """Dashboard 3: what the agent received, decided, did, and how well it worked."""
+    layout = Layout()
+
+    layout.row("Agent state")
+    layout.stat(
+        "Mode",
+        "Active agent mode: observe (diagnose only), dry_run (record intent) or enforce (act).",
+        [Query("agent_mode == 1", "{{mode}}", instant=True)],
+        text_mode="name",
+    )
+    layout.stat(
+        "Queue depth",
+        "Incidents waiting for a worker.",
+        [Query("max(agent_queue_depth)")],
+        thresholds=[Threshold(None, GREEN), Threshold(10, AMBER), Threshold(50, RED)],
+    )
+    layout.stat(
+        "LLM circuit breaker",
+        "0 = closed (LLM in use), 1 = open (falling back to the rule-based engine).",
+        [Query("max(agent_llm_circuit_state)")],
+        thresholds=[Threshold(None, GREEN), Threshold(1, RED)],
+    )
+    layout.stat(
+        "Incidents (1h)",
+        "Incidents that reached a final state in the last hour.",
+        [Query("sum(increase(agent_incidents_total[1h])) or vector(0)")],
+        decimals=0,
+    )
+    layout.stat(
+        "Escalations (1h)",
+        "Incidents handed to a human in the last hour.",
+        [Query("sum(increase(agent_escalations_total[1h])) or vector(0)")],
+        decimals=0,
+        thresholds=[Threshold(None, GREEN), Threshold(1, AMBER)],
+    )
+    layout.stat(
+        "Recovery success (1h)",
+        "Share of verifications after an action that confirmed recovery.",
+        [
+            Query(
+                'sum(increase(agent_recovery_verified_total{result="recovered"}[1h])) '
+                "/ sum(increase(agent_recovery_verified_total[1h]))"
+            )
+        ],
+        unit="percentunit",
+        decimals=0,
+        thresholds=[Threshold(None, RED), Threshold(0.5, AMBER), Threshold(0.9, GREEN)],
+    )
+
+    layout.row("Intake and incidents")
+    layout.timeseries(
+        "Alerts received",
+        "Alerts delivered by Alertmanager per minute, by severity.",
+        [Query("sum by (severity) (rate(agent_alerts_received_total[1m])) * 60", "{{severity}}")],
+        minimum=0,
+    )
+    layout.timeseries(
+        "Incidents by final state",
+        "Incidents per final state (cumulative).",
+        [Query("sum by (status) (agent_incidents_total)", "{{status}}")],
+        minimum=0,
+    )
+    layout.timeseries(
+        "Incident duration",
+        "Median and 95th percentile time from incident creation to its final state.",
+        [
+            Query(
+                f"histogram_quantile({q}, sum by (le) "
+                "(rate(agent_incident_duration_seconds_bucket[15m])))",
+                label,
+            )
+            for q, label in ((0.5, "p50"), (0.95, "p95"))
+        ],
+        unit="s",
+        minimum=0,
+    )
+
+    layout.row("Diagnosis")
+    layout.timeseries(
+        "Diagnoses by category",
+        "Diagnoses per category and engine (cumulative).",
+        [Query("sum by (category, mode) (agent_diagnosis_total)", "{{category}} ({{mode}})")],
+        minimum=0,
+    )
+    layout.timeseries(
+        "Diagnosis time",
+        "95th percentile time to produce a diagnosis, by engine.",
+        [
+            Query(
+                "histogram_quantile(0.95, sum by (le, mode) "
+                "(rate(agent_diagnosis_duration_seconds_bucket[15m])))",
+                "{{mode}}",
+            )
+        ],
+        unit="s",
+        minimum=0,
+    )
+    layout.timeseries(
+        "Validation failures by reason",
+        "Diagnoses rejected by the validator (cumulative). Each one is an unsafe or "
+        "unjustified proposal that was stopped.",
+        [Query("sum by (reason) (agent_validation_failures_total)", "{{reason}}")],
+        minimum=0,
+    )
+
+    layout.row("Actions and recovery")
+    layout.timeseries(
+        "Actions by outcome",
+        "Actions by type and outcome: executed, blocked, pending_approval, rejected, "
+        "dry_run, failed (cumulative).",
+        [Query("sum by (action, outcome) (agent_actions_total)", "{{action}}: {{outcome}}")],
+        minimum=0,
+    )
+    layout.timeseries(
+        "Verification results",
+        "Recovery verifications after an action (cumulative).",
+        [Query("sum by (result) (agent_recovery_verified_total)", "{{result}}")],
+        minimum=0,
+    )
+    layout.timeseries(
+        "Escalations by reason",
+        "Incidents handed to a human, by reason (cumulative).",
+        [Query("sum by (reason) (agent_escalations_total)", "{{reason}}")],
+        minimum=0,
+    )
+
+    layout.row("LLM and queue")
+    layout.timeseries(
+        "LLM calls",
+        "LLM calls per minute by provider and outcome.",
+        [
+            Query(
+                "sum by (provider, outcome) (rate(agent_llm_calls_total[1m])) * 60",
+                "{{provider}}: {{outcome}}",
+            )
+        ],
+        minimum=0,
+        width=6,
+    )
+    layout.timeseries(
+        "LLM latency",
+        "Median and 95th percentile LLM call latency.",
+        [
+            Query(
+                f"histogram_quantile({q}, sum by (le) "
+                "(rate(agent_llm_latency_seconds_bucket[15m])))",
+                label,
+            )
+            for q, label in ((0.5, "p50"), (0.95, "p95"))
+        ],
+        unit="s",
+        minimum=0,
+        width=6,
+    )
+    layout.timeseries(
+        "LLM tokens",
+        "Tokens per minute sent to (in) and received from (out) the LLM.",
+        [Query("sum by (direction) (rate(agent_llm_tokens_total[1m])) * 60", "{{direction}}")],
+        minimum=0,
+        width=6,
+    )
+    layout.timeseries(
+        "LLM errors and rejected webhooks",
+        "LLM errors by kind and webhooks rejected because the queue was full (cumulative).",
+        [
+            Query("sum by (kind) (agent_llm_errors_total)", "llm error: {{kind}}"),
+            Query("sum(agent_queue_rejected_total)", "queue rejected"),
+        ],
+        minimum=0,
+        width=6,
+    )
+
+    return dashboard(
+        "relialoop-agent",
+        "Incidents and Agent",
+        "The agent monitored like a service: intake, diagnosis, actions, recovery and LLM.",
+        layout,
+    )
+
+
 DASHBOARDS: dict[str, Callable[[], dict[str, Any]]] = {
     "golden-signals.json": golden_signals,
+    "incidents-agent.json": incidents_agent,
     "slo-error-budget.json": slo_error_budget,
     "pipeline-health.json": pipeline_health,
 }

@@ -21,6 +21,29 @@ test-rules: ## Run promtool rule tests and amtool config and routing tests
 verify-pipeline: ## Check the live alerting pipeline end to end
 	$(CLI) verify-pipeline
 
+.PHONY: gate deploy incidents approve reject mode tickets
+
+gate: ## Check the error-budget gate: make gate SERVICE=orders
+	$(CLI) gate --service $(SERVICE)
+
+deploy: ## Gated deploy: make deploy SERVICE=orders VERSION=v2-bad [OVERRIDE="reason"]
+	$(CLI) deploy --service $(SERVICE) --version $(VERSION) $(if $(OVERRIDE),--override "$(OVERRIDE)",)
+
+incidents: ## List incidents, or show one: make incidents [ID=INC-...]
+	$(CLI) incidents $(if $(ID),show $(ID),list)
+
+approve: ## Approve a pending high-risk action: make approve ID=INC-...
+	$(CLI) approve $(ID)
+
+reject: ## Reject a pending high-risk action: make reject ID=INC-...
+	$(CLI) reject $(ID)
+
+mode: ## Show or set the agent mode (kill switch): make mode [MODE=dry_run]
+	$(CLI) mode $(MODE)
+
+tickets: ## List tickets
+	$(CLI) tickets
+
 silence: ## Silence a service: make silence SERVICE=orders MINUTES=15
 	$(CLI) silence --service $(SERVICE) --minutes $(or $(MINUTES),15)
 

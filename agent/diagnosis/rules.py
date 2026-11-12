@@ -5,7 +5,7 @@ alone):
 
 1. Localise: the most downstream service in the dependency chain that shows
    anomalous signals. Symptoms appear at the gateway; causes usually sit below.
-2. restarts >= 2                                   -> CRASH_LOOP
+2. restarts >= 2, or one crash right after a deploy  -> CRASH_LOOP
 3. deploy in the last 10 min and errors/latency up  -> BAD_DEPLOY
 4. memory rising and above 70% of the limit
    (or exhaustion predicted)                        -> MEMORY_LEAK
@@ -69,7 +69,30 @@ class Signals:
 
 
 def _restarts(sig: Signals) -> float:
-    return max(sig.number("restarts_2m") or 0.0, sig.number("container_restarts") or 0.0)
+    """Crash restarts.
+
+    Restarts by the container restart policy are real crashes. Process
+    start-time changes also include deliberate restarts (a deploy, or the
+    agent's own restart action), so they are only used when the runtime
+    could not be asked.
+    """
+    by_policy = sig.number("container_restarts")
+    if by_policy is not None:
+        return by_policy
+    return sig.number("restarts_2m") or 0.0
+
+
+def _crashing(sig: Signals, settings: AgentSettings) -> bool:
+    """Repeated crashes, or a single crash of a release that was just deployed.
+
+    A release that dies seconds after its deploy is already the answer; waiting
+    for the second crash would only delay the rollback (and, at the gateway,
+    look like an unexplained error spike in the meantime).
+    """
+    restarts = _restarts(sig)
+    deploy_age = sig.number("seconds_since_last_deploy")
+    just_deployed = deploy_age is not None and deploy_age <= settings.deploy_recent_s
+    return restarts >= settings.restarts_threshold or (restarts >= 1 and just_deployed)
 
 
 def _errors_elevated(sig: Signals, settings: AgentSettings) -> bool:
@@ -100,7 +123,7 @@ def _down(sig: Signals) -> bool:
 def is_anomalous(sig: Signals, settings: AgentSettings) -> bool:
     """True when the service itself shows a signal the tree can act on."""
     return (
-        _restarts(sig) >= settings.restarts_threshold
+        _crashing(sig, settings)
         or _down(sig)
         or _errors_elevated(sig, settings)
         or _latency_elevated(sig, settings)
@@ -142,14 +165,13 @@ def diagnose(bundle: EvidenceBundle, settings: AgentSettings) -> Diagnosis:
     service = localize(bundle, settings)
     sig = Signals(service, bundle)
 
-    restarts = _restarts(sig)
     err_ratio = sig.number("err_ratio_1m")
     p99 = sig.number("p99_latency_1m")
     deploy_age = sig.number("seconds_since_last_deploy")
     previous = sig.text("previous_version")
     deployed = sig.text("last_deploy_version")
 
-    if "prometheus" in bundle.incomplete and restarts < settings.restarts_threshold:
+    if "prometheus" in bundle.incomplete and not _crashing(sig, settings):
         return _result(
             sig,
             Category.UNKNOWN,
@@ -158,7 +180,7 @@ def diagnose(bundle: EvidenceBundle, settings: AgentSettings) -> Diagnosis:
         )
 
     # 2. crash loop
-    if restarts >= settings.restarts_threshold:
+    if _crashing(sig, settings):
         sig.cite(
             "restarts_2m", f"{sig.number('restarts_2m') or 0:.0f} process restarts in 2 minutes"
         )

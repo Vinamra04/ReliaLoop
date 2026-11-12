@@ -4,7 +4,7 @@ import pytest
 
 from agent.app.domain import ActionType, Category
 from agent.diagnosis.rules import diagnose, localize
-from agent.tests.fakes import EvidenceRig
+from agent.tests.fakes import EvidenceRig, container
 
 A, C = ActionType, Category
 
@@ -240,3 +240,56 @@ async def test_error_spike_shortly_after_a_rollback_is_not_blamed_on_the_reverte
     diagnosis, _ = await run(setup)
     assert diagnosis.category is C.ERROR_SPIKE
     assert diagnosis.action.type is A.RESTART
+
+
+async def test_deliberate_restarts_are_not_a_crash_loop():
+    """Regression: seen live. The agent's own restart must not look like a crash."""
+
+    def setup(rig: EvidenceRig) -> None:
+        rig.error_spike()
+        rig.metrics.set("restarts_2m", "orders", 3.0)  # deploy + agent restart
+        # The runtime reports no restarts by the restart policy.
+
+    diagnosis, _ = await run(setup)
+    assert diagnosis.category is C.ERROR_SPIKE
+
+
+async def test_process_restarts_are_used_when_the_runtime_cannot_be_asked():
+    def setup(rig: EvidenceRig) -> None:
+        rig.metrics.set("restarts_2m", "orders", 4.0)
+        rig.executor.fail_status = True
+
+    diagnosis, _ = await run(setup)
+    assert diagnosis.category is C.CRASH_LOOP
+    assert diagnosis.action.type is A.RESTART
+
+
+def one_crash(rig: EvidenceRig, *, deployed_s_ago: float | None) -> None:
+    """Exactly the evidence seen live 14 s after deploying a crashing release."""
+    rig.metrics.set_many("gateway", {"err_ratio_1m": 0.075})
+    rig.executor.containers["orders"] = [
+        container(
+            image="relialoop/orders:v3-crash",
+            restart_count=1,
+            started_at=rig.clock.now - timedelta(seconds=3),
+        )
+    ]
+    if deployed_s_ago is not None:
+        rig.deploys.add(
+            "orders", "v3-crash", "v1", rig.clock.now - timedelta(seconds=deployed_s_ago)
+        )
+
+
+async def test_one_crash_right_after_a_deploy_is_already_a_crash_loop():
+    """Regression: seen live. The first diagnosis blamed the gateway and restarted it."""
+    diagnosis, _ = await run(lambda rig: one_crash(rig, deployed_s_ago=14))
+    assert (diagnosis.category, diagnosis.root_cause_service) == (C.CRASH_LOOP, "orders")
+    assert diagnosis.action.type is A.ROLLBACK
+    assert diagnosis.action.params == {"to_version": "v1"}
+
+
+@pytest.mark.parametrize("deployed_s_ago", [None, 900])
+async def test_one_crash_without_a_recent_deploy_is_not_a_crash_loop(deployed_s_ago):
+    diagnosis, _ = await run(lambda rig: one_crash(rig, deployed_s_ago=deployed_s_ago))
+    assert diagnosis.category is C.ERROR_SPIKE
+    assert diagnosis.root_cause_service == "gateway"

@@ -1,0 +1,87 @@
+# The agent is monitored like any production service: these alerts say when
+# the automation itself is unhealthy. All are tickets for humans; the agent
+# never tries to remediate itself. See docs/runbooks/agent-health.md.
+#
+# In this demo every ticket is delivered to the agent's own ticket endpoint.
+# In production these alerts would go to a channel that does not depend on
+# the agent being up.
+groups:
+  - name: agent-health
+    rules:
+      - alert: AgentDown
+        expr: absent(up{service="agent"} == 1)
+        for: 30s
+        labels:
+          severity: ticket
+          class: cause
+          service: agent
+        annotations:
+          summary: The remediation agent is down
+          description: >-
+            Prometheus has not scraped a healthy agent for 30 seconds. Pages are not being
+            diagnosed or remediated; incidents need a human until it is back.
+          runbook_url: http://localhost:8080/runbooks/agent-health
+          dashboard_url: http://localhost:3000/d/relialoop-agent
+
+      - alert: AgentValidationFailuresHigh
+        expr: sum(increase(agent_validation_failures_total[10m])) >= 3
+        labels:
+          severity: ticket
+          class: cause
+          service: agent
+        annotations:
+          summary: The validator rejected {{ $value | printf "%.0f" }} diagnoses in 10 minutes
+          description: >-
+            Diagnoses are being rejected by the validator (hallucinated evidence, disallowed or
+            inconsistent actions, low confidence). The safety net is working, but the diagnosis
+            engine is producing poor proposals: check the reasons and the model or prompt version.
+          runbook_url: http://localhost:8080/runbooks/agent-health
+          dashboard_url: http://localhost:3000/d/relialoop-agent
+
+      - alert: AgentRecoveryFailing
+        expr: sum(increase(agent_recovery_verified_total{result="failed"}[15m])) >= 2
+        labels:
+          severity: ticket
+          class: cause
+          service: agent
+        annotations:
+          summary: Agent actions are not fixing incidents
+          description: >-
+            At least two actions in the last 15 minutes were followed by a failed recovery
+            verification. The agent is acting without effect: review recent incidents and
+            consider switching it to dry_run.
+          runbook_url: http://localhost:8080/runbooks/agent-health
+          dashboard_url: http://localhost:3000/d/relialoop-agent
+
+      - alert: AgentLLMErrorsHigh
+        expr: |
+          max(agent_llm_circuit_state) == 1
+          or sum(increase(agent_llm_errors_total[5m])) >= 3
+        labels:
+          severity: ticket
+          class: cause
+          service: agent
+        annotations:
+          summary: The agent's LLM provider is failing
+          description: >-
+            LLM calls are failing or the circuit breaker is open. The agent falls back to the
+            rule-based engine and marks incidents as degraded; diagnoses are still produced.
+          runbook_url: http://localhost:8080/runbooks/agent-health
+          dashboard_url: http://localhost:3000/d/relialoop-agent
+
+      - alert: AgentQueueSaturated
+        expr: |
+          max(agent_queue_depth) >= 50
+          or sum(increase(agent_queue_rejected_total[5m])) > 0
+        for: 30s
+        labels:
+          severity: ticket
+          class: cause
+          service: agent
+        annotations:
+          summary: The agent's incident queue is saturated
+          description: >-
+            Incidents are queueing faster than the workers process them, or webhooks are being
+            rejected with 429. Alertmanager retries, but remediation is delayed.
+          runbook_url: http://localhost:8080/runbooks/agent-health
+          dashboard_url: http://localhost:3000/d/relialoop-agent

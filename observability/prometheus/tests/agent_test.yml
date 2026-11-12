@@ -1,0 +1,142 @@
+# Unit tests for the agent health alerts.
+rule_files:
+  - ../rules/handwritten/agent.yml
+
+evaluation_interval: 5s
+
+tests:
+  - name: AgentDown fires when the agent is down or gone, not while it is up
+    interval: 5s
+    input_series:
+      - series: 'up{service="agent", instance="a1"}'
+        values: "1x12 0x12 1x12"
+    alert_rule_test:
+      - eval_time: 55s
+        alertname: AgentDown
+        exp_alerts: []
+      - eval_time: 1m25s
+        alertname: AgentDown
+        exp_alerts: []
+      - eval_time: 1m35s
+        alertname: AgentDown
+        exp_alerts:
+          - exp_labels:
+              severity: ticket
+              class: cause
+              service: agent
+            exp_annotations:
+              summary: The remediation agent is down
+              description: Prometheus has not scraped a healthy agent for 30 seconds. Pages are not being diagnosed or remediated; incidents need a human until it is back.
+              runbook_url: http://localhost:8080/runbooks/agent-health
+              dashboard_url: http://localhost:3000/d/relialoop-agent
+      - eval_time: 2m30s
+        alertname: AgentDown
+        exp_alerts: []
+
+  - name: AgentDown fires when the agent was never scraped
+    interval: 5s
+    input_series:
+      - series: 'up{service="gateway", instance="g1"}'
+        values: "1x24"
+    promql_expr_test:
+      - expr: count by (service) (ALERTS{alertname="AgentDown", alertstate="firing"})
+        eval_time: 1m
+        exp_samples:
+          - labels: '{service="agent"}'
+            value: 1
+
+  - name: AgentValidationFailuresHigh needs three rejections in ten minutes
+    interval: 5s
+    input_series:
+      - series: 'agent_validation_failures_total{service="agent", reason="unknown_evidence_id"}'
+        values: "0x12 1x12 2x12 2x60"
+      - series: 'agent_validation_failures_total{service="agent", reason="low_confidence"}'
+        values: "0x40 1x60"
+    promql_expr_test:
+      - expr: count(ALERTS{alertname="AgentValidationFailuresHigh", alertstate="firing"})
+        eval_time: 3m
+        exp_samples: []
+      - expr: count by (service, severity) (ALERTS{alertname="AgentValidationFailuresHigh", alertstate="firing"})
+        eval_time: 4m
+        exp_samples:
+          - labels: '{service="agent", severity="ticket"}'
+            value: 1
+
+  - name: AgentRecoveryFailing counts failed verifications only
+    interval: 5s
+    input_series:
+      - series: 'agent_recovery_verified_total{service="agent", result="recovered"}'
+        values: "0+1x60"
+      - series: 'agent_recovery_verified_total{service="agent", result="failed"}'
+        values: "0x12 1x12 2x36"
+    promql_expr_test:
+      - expr: count(ALERTS{alertname="AgentRecoveryFailing", alertstate="firing"})
+        eval_time: 1m30s
+        exp_samples: []
+      - expr: count(ALERTS{alertname="AgentRecoveryFailing", alertstate="firing"})
+        eval_time: 3m
+        exp_samples:
+          - labels: "{}"
+            value: 1
+
+  - name: AgentLLMErrorsHigh fires on an open circuit breaker
+    interval: 5s
+    input_series:
+      - series: 'agent_llm_circuit_state{service="agent"}'
+        values: "0x12 1x12 0x12"
+      - series: 'agent_llm_errors_total{service="agent", kind="timeout"}'
+        values: "0x36"
+    promql_expr_test:
+      - expr: count(ALERTS{alertname="AgentLLMErrorsHigh", alertstate="firing"})
+        eval_time: 55s
+        exp_samples: []
+      - expr: count(ALERTS{alertname="AgentLLMErrorsHigh", alertstate="firing"})
+        eval_time: 1m30s
+        exp_samples:
+          - labels: "{}"
+            value: 1
+      - expr: count(ALERTS{alertname="AgentLLMErrorsHigh", alertstate="firing"})
+        eval_time: 2m30s
+        exp_samples: []
+
+  - name: AgentLLMErrorsHigh fires on repeated errors with the breaker closed
+    interval: 5s
+    input_series:
+      - series: 'agent_llm_circuit_state{service="agent"}'
+        values: "0x60"
+      - series: 'agent_llm_errors_total{service="agent", kind="rate_limited"}'
+        values: "0x12 1 2 3 4x40"
+    promql_expr_test:
+      - expr: count(ALERTS{alertname="AgentLLMErrorsHigh", alertstate="firing"})
+        eval_time: 1m5s
+        exp_samples: []
+      - expr: count(ALERTS{alertname="AgentLLMErrorsHigh", alertstate="firing"})
+        eval_time: 1m30s
+        exp_samples:
+          - labels: "{}"
+            value: 1
+
+  - name: AgentQueueSaturated fires on a deep queue or rejected webhooks
+    interval: 5s
+    input_series:
+      - series: 'agent_queue_depth{service="agent"}'
+        values: "2x12 60x12 1x40"
+      - series: 'agent_queue_rejected_total{service="agent"}'
+        values: "0x40 1 2 3x30"
+    promql_expr_test:
+      - expr: count(ALERTS{alertname="AgentQueueSaturated", alertstate="firing"})
+        eval_time: 1m20s
+        exp_samples: []
+      - expr: count(ALERTS{alertname="AgentQueueSaturated", alertstate="firing"})
+        eval_time: 1m40s
+        exp_samples:
+          - labels: "{}"
+            value: 1
+      - expr: count(ALERTS{alertname="AgentQueueSaturated", alertstate="firing"})
+        eval_time: 2m30s
+        exp_samples: []
+      - expr: count(ALERTS{alertname="AgentQueueSaturated", alertstate="firing"})
+        eval_time: 4m10s
+        exp_samples:
+          - labels: "{}"
+            value: 1
