@@ -43,9 +43,9 @@ class AgentSettings(BaseSettings):
     gemini_model: str = ""
     # Optional JSON file with scripted responses for the fake provider.
     llm_fake_fixture: Path | None = None
-    llm_timeout_s: float = Field(default=30.0, gt=0)
+    llm_timeout_s: float = Field(default=25.0, gt=0)
     llm_probe_timeout_s: float = Field(default=20.0, gt=0)
-    llm_max_attempts: int = Field(default=3, ge=1, le=5)
+    llm_max_attempts: int = Field(default=2, ge=1, le=5)
     llm_max_output_tokens: int = Field(default=4096, gt=0)
     llm_temperature: float = Field(default=0.0, ge=0, le=1)
     # Extra evidence rounds the LLM may request, and the hard cap on API calls.

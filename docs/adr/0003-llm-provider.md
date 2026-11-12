@@ -58,6 +58,41 @@ keep evaluation runs comparable.
 20-token output limit returned empty text because the budget was spent on
 reasoning tokens. The adapter therefore sets a generous output limit.
 
+## Update, 2026-11-13: free-tier quota decides the model in practice
+
+The first live LLM run fell back to the rule-based engine: calls to
+`gemini-3.6-flash` hung until the timeout or failed. One direct request per
+model showed why (HTTP 429 `RESOURCE_EXHAUSTED`, quota id
+`GenerateRequestsPerDayPerProjectPerModel-FreeTier`):
+
+| Model | Free-tier limit found for the project key |
+|---|---|
+| `gemini-3.6-flash` | **20 requests per day**; exhausted by the probing above |
+| `gemini-3.5-flash` | counted against the same `gemini-3.6-flash` quota |
+| `gemini-3.5-flash-lite` | separate quota; answering |
+| `gemini-3.1-flash-lite` | separate quota; answering |
+
+Two more observations from the same session: under load the API sometimes
+returns 503 ("high demand"), and requests that will not be served often hang
+instead of failing fast.
+
+Consequences for the project:
+
+- **Model in use: `gemini-3.5-flash-lite`** (pinned with `GEMINI_MODEL`). With
+  the real diagnosis prompt (about 4,400 input tokens) it returned
+  schema-valid, correct output in 7.3 s and 8.2 s (two calls; a third got a
+  transient 503). It is a flash-lite model, not the plain flash model the plan
+  asked for: 20 requests a day cannot carry an evaluation in which each
+  incident uses one to three calls plus one for the postmortem.
+- **Pin the model.** Automatic selection spends one request per probe, which
+  matters at this quota. `GEMINI_MODEL` empty still works, but pinning is the
+  recommended setting.
+- **Shorter patience.** Per-call timeout 25 s and at most 2 attempts per
+  call (down from 30 s and 3), so a hung provider delays an incident by under
+  a minute before the rule-based fallback takes over.
+- Results produced with this model are labelled with it. Anyone with a paid
+  key can set `GEMINI_MODEL=gemini-3.6-flash` and rerun the evaluation.
+
 ## Consequences
 
 - The model actually used is recorded on every diagnosis (`provider`, `model`,
