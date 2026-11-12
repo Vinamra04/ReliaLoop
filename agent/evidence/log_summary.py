@@ -24,7 +24,8 @@ _UUID = re.compile(
     r"\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b"
 )
 _HEX = re.compile(r"\b[0-9a-fA-F]{12,}\b")
-_NUMBER = re.compile(r"\b\d+(?:\.\d+)?\b")
+# Not preceded by a letter, so identifiers such as `v1` or `http2` stay intact.
+_NUMBER = re.compile(r"(?<![A-Za-z_])\d+(?:\.\d+)?")
 
 
 def template_of(message: str) -> str:
