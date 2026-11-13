@@ -20,7 +20,7 @@ While the process is down or starting, requests fail. With a single replica the 
 
 ## Mitigation
 
-**What the agent does:** if a deploy happened recently it proposes rolling back to the previous version; this is high risk and waits for human approval. With no recent deploy it restarts the service once and escalates if the loop continues.
+**What the agent does:** it treats as a crash loop either two or more restarts by the container restart policy, or a single such restart within 10 minutes of a deploy (a release that dies right after it ships). Restarts the agent or a deploy caused deliberately do not count. If a deploy happened recently it proposes rolling back to the previous version; this is high risk and waits for human approval. With no recent deploy it restarts the service once and escalates if the loop continues.
 
 **Manually:**
 

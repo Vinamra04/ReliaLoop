@@ -41,6 +41,10 @@ BASELINE_LOOKBACK_FACTOR = 1.5
 STEP_S = 5
 API = 'route!~"/healthz|/readyz|/metrics|/chaos.*"'
 GATEWAY_BURN = 'max(slo:burn_rate:ratio_30s{service="gateway"})'
+# The fast-burn page looks at 2 minutes. If errors from an earlier run (or from
+# the cleanup itself) are still inside that window, the next fault is detected
+# sooner than it would be from a clean state, which would flatter the numbers.
+LONG_WINDOW_BURN = "max(slo:burn_rate:ratio_2m)"
 TERMINAL = {"RESOLVED", "ESCALATED", "REJECTED", "DRY_RUN_COMPLETE", "OBSERVED"}
 AGENT_MODES: dict[Mode, tuple[str, str]] = {
     "none": ("observe", "rules"),
@@ -249,7 +253,8 @@ def reset_baseline(system: Stack, log: Log) -> None:
 def settle(system: Stack, log: Log, max_settle_s: float = MAX_SETTLE_S) -> float:
     """Wait until the system has been quiet for `SETTLE_S`; return how long that took.
 
-    Quiet means: no page alert firing, the gateway within its objectives, and the
+    Quiet means: no page alert firing, the gateway within its objectives, the
+    2-minute alert windows of every SLO clean (see LONG_WINDOW_BURN), and the
     request rate of 10 minutes ago back at baseline (the agent compares load with
     that moment, so an earlier surge must have left its look-back).
     """
@@ -257,6 +262,7 @@ def settle(system: Stack, log: Log, max_settle_s: float = MAX_SETTLE_S) -> float
     quiet_since: float | None = None
     while time.time() - started < max_settle_s:
         burn = system.query(GATEWAY_BURN)
+        long_burn = system.query(LONG_WINDOW_BURN)
         lookback = system.query(
             f'sum(rate(http_requests_total{{service="orders", {API}}}[1m] offset 10m))'
         )
@@ -264,6 +270,8 @@ def settle(system: Stack, log: Log, max_settle_s: float = MAX_SETTLE_S) -> float
             not system.page_alerts()
             and burn is not None
             and burn <= measure.WITHIN_OBJECTIVE
+            and long_burn is not None
+            and long_burn <= measure.WITHIN_OBJECTIVE
             and (lookback is None or lookback < BASELINE_LOOKBACK_FACTOR * BASE_RPS)
         )
         now = time.time()

@@ -1,12 +1,12 @@
 name: latency_saturation
-description: Load surges to 150 rps against a single orders replica (about 89 rps capacity).
+description: Load surges to 130 rps against a single orders replica (about 89 rps capacity).
 ground_truth:
   category: LOAD_SATURATION
   root_cause_service: orders
   expected_action: scale_service
 inject:
   kind: traffic_surge
-  rps: 150
+  rps: 130
   duration_s: 900
 max_duration_s: 300
 control_duration_s: 150

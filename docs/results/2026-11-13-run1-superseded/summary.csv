@@ -1,0 +1,10 @@
+scenario,mode,run,started_at,error,detected,time_to_detect_s,time_to_mitigate_s,mitigate_censored,error_budget_consumed_pct,diagnosed_category,diagnosed_root_cause,proposed_action,diagnosis_correct,root_cause_correct,action_correct,final_state,recovery_verified,actions_executed,wrong_actions_executed,unsafe_actions_blocked,approvals_given,degraded_mode,llm_calls,llm_tokens_in,llm_tokens_out,llm_latency_ms,llm_model,duration_s
+crash_loop,none,1,2026-11-13T07:00:56+00:00,,True,6.0,,True,163.3,,,,,,,,,,0,0,0,False,0,0,0,,,181.7
+error_spike,none,1,2026-11-13T07:03:58+00:00,,True,10.4,,True,408.6,,,,,,,,,,0,0,0,False,0,0,0,,,245.5
+latency_saturation,none,1,2026-11-13T07:08:03+00:00,,True,6.2,,True,2225.1,,,,,,,,,,0,0,0,False,0,0,0,,,244.0
+crash_loop,rules,1,2026-11-13T07:12:07+00:00,,True,16.2,72.8,False,45.8,CRASH_LOOP,orders,rollback_service,True,True,True,RESOLVED,True,rollback_service:orders,0,0,1,False,0,0,0,,,240.9
+error_spike,rules,1,2026-11-13T07:16:08+00:00,,True,10.8,52.3,False,51.0,ERROR_SPIKE,orders,restart_service,True,True,True,RESOLVED,True,restart_service:orders,0,0,0,False,0,0,0,,,222.5
+latency_saturation,rules,1,2026-11-13T07:19:51+00:00,,True,9.7,56.3,False,268.8,LOAD_SATURATION,orders,scale_service,True,True,True,RESOLVED,True,scale_service:orders,0,0,0,False,0,0,0,,,351.9
+crash_loop,llm,1,2026-11-13T07:25:43+00:00,,True,5.9,62.5,False,37.5,CRASH_LOOP,orders,rollback_service,True,True,True,RESOLVED,True,rollback_service:orders,0,0,1,False,1,2830,299,2366.0,gemini-3.5-flash-lite,197.7
+error_spike,llm,1,2026-11-13T07:29:01+00:00,,True,15.8,62.4,False,51.5,ERROR_SPIKE,orders,restart_service,True,True,True,RESOLVED,True,restart_service:orders,0,0,0,False,1,4442,250,2169.0,gemini-3.5-flash-lite,228.5
+latency_saturation,llm,1,2026-11-13T07:32:49+00:00,,True,7.4,,True,233.7,LOAD_SATURATION,orders,scale_service,True,True,True,RESOLVED,True,scale_service:orders,0,0,0,False,1,4537,275,2063.0,gemini-3.5-flash-lite,162.7
