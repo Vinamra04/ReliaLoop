@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import contextlib
 import json
+import subprocess
+from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any
 
@@ -37,6 +39,8 @@ dashboards_app = typer.Typer(help="Grafana dashboards as code.", no_args_is_help
 app.add_typer(dashboards_app, name="dashboards")
 slo_app = typer.Typer(help="SLOs as code: generate and validate rules.", no_args_is_help=True)
 app.add_typer(slo_app, name="slo")
+eval_app = typer.Typer(help="Evaluate the agent on injected faults.", no_args_is_help=True)
+app.add_typer(eval_app, name="eval")
 incidents_app = typer.Typer(help="Inspect incidents handled by the agent.", no_args_is_help=True)
 app.add_typer(incidents_app, name="incidents")
 console = Console()
@@ -651,6 +655,81 @@ def tickets(limit: int = typer.Option(20, min=1, max=500)) -> None:
             row["summary"],
         )
     console.print(table if rows else "no tickets")
+
+
+def _eval_meta() -> dict[str, Any]:
+    from agent.diagnosis.llm.prompting import DIAGNOSIS_PROMPT_VERSION
+
+    commit = subprocess.run(
+        ["git", "rev-parse", "--short", "HEAD"],  # noqa: S607
+        capture_output=True,
+        text=True,
+        check=False,
+        cwd=paths.REPO_ROOT,
+    ).stdout.strip()
+    return {
+        "date": datetime.now(UTC).strftime("%Y-%m-%d"),
+        "commit": commit or "unknown",
+        "prompt_version": DIAGNOSIS_PROMPT_VERSION,
+    }
+
+
+@eval_app.command("run")
+def eval_run(
+    quick: bool = typer.Option(True, help="One run per scenario per mode (the only size offered)."),
+    modes: str = typer.Option("none,rules,llm", help="Comma-separated modes."),
+    scenarios: str = typer.Option("", help="Comma-separated scenario names; empty for all."),
+) -> None:
+    """Run the evaluation against the running stack and write the report."""
+    from eval import report as eval_report
+    from eval import runner as eval_runner
+    from eval.models import MODES, load_scenarios
+
+    available = load_scenarios()
+    names = [name.strip() for name in scenarios.split(",") if name.strip()] or list(available)
+    chosen_modes = [mode.strip() for mode in modes.split(",") if mode.strip()]
+    unknown = [n for n in names if n not in available] + [m for m in chosen_modes if m not in MODES]
+    if unknown:
+        raise _fail(f"unknown scenarios or modes: {', '.join(unknown)}")
+    out_dir = paths.REPO_ROOT / "eval" / "results" / datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
+    console.print(
+        "[bold yellow]EVALUATION:[/bold yellow] the agent will be switched to ENFORCE mode and "
+        "will restart, scale and roll back the demo services. Rollbacks are auto-approved."
+    )
+    console.print(f"results: {_relative(out_dir)}")
+
+    def log(message: str) -> None:
+        console.print(message, markup=False, highlight=False)
+
+    try:
+        results = eval_runner.run_all(
+            [available[name] for name in names],
+            [mode for mode in MODES if mode in chosen_modes],
+            out_dir,
+            log,
+        )
+    except stack.StackError as exc:
+        raise _fail(str(exc)) from exc
+    eval_report.write_report(results, out_dir, _eval_meta())
+    console.print(f"[green]done:[/green] {_relative(out_dir / 'results.md')}")
+    failed = [r for r in results if r.error]
+    if failed:
+        raise _fail(f"{len(failed)} of {len(results)} runs could not be carried out")
+
+
+@eval_app.command("report")
+def eval_report_cmd(
+    directory: str = typer.Argument(..., help="A results directory containing runs.jsonl."),
+) -> None:
+    """Rebuild summary.csv, results.json, results.md and charts from runs.jsonl."""
+    from eval import report as eval_report
+
+    out_dir = (paths.REPO_ROOT / directory).resolve()
+    runs_file = out_dir / "runs.jsonl"
+    if not runs_file.is_file():
+        raise _fail(f"{runs_file} not found")
+    eval_report.write_report(eval_report.load_runs(runs_file), out_dir, _eval_meta())
+    console.print(f"report written to {_relative(out_dir)}")
 
 
 @dashboards_app.command("generate")

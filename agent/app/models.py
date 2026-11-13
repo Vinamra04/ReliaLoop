@@ -73,7 +73,8 @@ class DeployEventIn(BaseModel):
     version: str = Field(pattern=VERSION_PATTERN)
     previous_version: str | None = Field(default=None, pattern=VERSION_PATTERN)
     status: Literal["started", "completed", "failed"]
-    reason: Literal["deploy"] = "deploy"
+    # "rollback" records a manual revert, so the reverted release is not blamed later.
+    reason: Literal["deploy", "rollback"] = "deploy"
     override_reason: str | None = Field(default=None, max_length=300)
     actor: str = Field(default="cli", max_length=64)
 

@@ -20,6 +20,9 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "**/tests/**" = ["S105", "S106", "S108", "S311"]
+# Markdown table rows and compact test fixtures read better on one line.
+"eval/report.py" = ["E501"]
+"eval/tests/**" = ["S105", "S106", "S108", "S311", "E501"]
 
 [tool.ruff.lint.flake8-bugbear]
 # FastAPI and typer declare parameters with calls in argument defaults.

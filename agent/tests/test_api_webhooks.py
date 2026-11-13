@@ -258,7 +258,6 @@ def test_deploy_events_are_recorded(client):
         {"service": "orders", "version": "v1", "status": "exploded"},
         {"service": "Orders; rm -rf", "version": "v1", "status": "completed"},
         {"service": "orders", "version": "v 1", "status": "completed"},
-        {"service": "orders", "version": "v1", "status": "completed", "reason": "rollback"},
         {"service": "orders", "version": "v1", "status": "completed", "extra": 1},
     ],
 )

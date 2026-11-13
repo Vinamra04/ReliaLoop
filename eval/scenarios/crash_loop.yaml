@@ -1,0 +1,12 @@
+name: crash_loop
+description: A release of orders that exits a few seconds after start is deployed.
+ground_truth:
+  category: CRASH_LOOP
+  root_cause_service: orders
+  expected_action: rollback_service
+inject:
+  kind: deploy
+  service: orders
+  version: v3-crash
+max_duration_s: 300
+control_duration_s: 150

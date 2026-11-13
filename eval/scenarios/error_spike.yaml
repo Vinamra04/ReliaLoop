@@ -1,0 +1,13 @@
+name: error_spike
+description: Half of the requests to orders fail with 500 (transient bad state).
+ground_truth:
+  category: ERROR_SPIKE
+  root_cause_service: orders
+  expected_action: restart_service
+inject:
+  kind: chaos_errors
+  service: orders
+  rate: 0.5
+  duration_s: 900
+max_duration_s: 300
+control_duration_s: 150
