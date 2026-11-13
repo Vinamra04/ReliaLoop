@@ -33,14 +33,10 @@ eval/results/
 data/
 logs/
 *.log
-.llm_cache/
+*.tmp
 
-# Frontend
+# Node (not used by this repo, ignored in case tooling adds it)
 node_modules/
-console/web/dist/
-console/web/test-results/
-console/web/playwright-report/
-console/web/.vite/
 
 # Editors / OS
 .idea/
@@ -49,5 +45,5 @@ console/web/.vite/
 Thumbs.db
 desktop.ini
 
-# Claude Code local settings
-.claude/settings.local.json
+# Local assistant/tooling settings
+.claude/
