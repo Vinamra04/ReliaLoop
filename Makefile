@@ -97,3 +97,8 @@ clear-chaos: ## Clear all injected faults
 
 dashboards: ## Regenerate Grafana dashboard JSON from tools/dashboards
 	$(CLI) dashboards generate
+
+.PHONY: eval-quick
+
+eval-quick: ## Run the evaluation: 3 scenarios x modes none/rules/llm (about 45 minutes)
+	$(CLI) eval run

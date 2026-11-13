@@ -1,0 +1,103 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.12"
+
+jobs:
+  lint:
+    name: Lint, format and types
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+      - run: pip install -r requirements-dev.txt
+      - run: ruff check .
+      - run: ruff format --check .
+      - run: mypy
+
+  test:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+      - run: pip install -r requirements-dev.txt
+      # The LLM is always the scripted fake in tests; no API key is needed or used.
+      - run: pytest --cov --cov-report=term-missing --cov-report=xml
+      - uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage.xml
+
+  validate-config:
+    name: SLO rules, Prometheus, Alertmanager and Compose
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+      - run: pip install -r requirements-dev.txt
+      # Generated files must match their sources.
+      - run: python -m tools.cli slo generate --check
+      - run: python -m tools.cli dashboards generate --check
+      # promtool check rules/config, run from the pinned Prometheus image.
+      - run: python -m tools.cli slo validate
+      # promtool test rules, amtool check-config and routing tests.
+      - run: python -m tools.cli test-rules
+      # Compose needs a .env; init generates one with random tokens.
+      - run: python -m tools.cli init
+      - run: docker compose --env-file .env --env-file deploy/versions.env config -q
+
+  security:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - run: pip install pip-audit
+      - run: |
+          for file in requirements-dev.txt agent/requirements.txt \
+            services/gateway/requirements.txt services/orders/requirements.txt \
+            services/loadgen/requirements.txt; do
+            echo "::group::pip-audit $file"
+            pip-audit --requirement "$file" --progress-spinner off
+            echo "::endgroup::"
+          done
+
+  build:
+    name: Build images
+    runs-on: ubuntu-latest
+    needs: [lint, test, validate-config]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - run: pip install -r requirements-dev.txt
+      - run: python -m tools.cli init
+      - run: python -m tools.cli build

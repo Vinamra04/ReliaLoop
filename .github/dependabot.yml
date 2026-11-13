@@ -1,0 +1,26 @@
+version: 2
+updates:
+  - package-ecosystem: pip
+    directories:
+      - /
+      - /agent
+      - /services/gateway
+      - /services/orders
+      - /services/loadgen
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: docker
+    directories:
+      - /agent
+      - /services/gateway
+      - /services/orders
+      - /services/loadgen
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
