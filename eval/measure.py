@@ -3,7 +3,8 @@
 The same definitions are applied to every mode, including the no-remediation
 control, so the comparison is fair:
 
-- time to detect   = first page alert firing after injection, minus t_inject
+- time to detect   = first moment a page alert is observed firing after injection,
+                     minus t_inject (polled every 2 s, so +/- 2 s)
 - time to mitigate = first moment after the SLI went bad at which the gateway
                      is back within its objectives and stays there for 30 s,
                      minus t_inject. If that never happens inside the run the

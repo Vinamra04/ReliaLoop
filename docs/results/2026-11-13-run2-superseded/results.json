@@ -1,0 +1,979 @@
+{
+  "meta": {
+    "date": "2026-11-13",
+    "commit": "2484265",
+    "prompt_version": "diagnosis-v1",
+    "scenarios": [
+      "crash_loop",
+      "error_spike",
+      "latency_saturation"
+    ],
+    "modes": [
+      "none",
+      "rules",
+      "llm"
+    ],
+    "runs_per_cell": 1,
+    "llm_model": "gemini-3.5-flash-lite",
+    "total_runs": 9,
+    "limitations": [
+      "Small sample: each cell is n runs of one scenario in one mode (n is stated in every table); with n = 1 there is no variance estimate and no claim of statistical significance.",
+      "Single machine: everything, including the load generator, ran on one developer laptop under Docker Desktop.",
+      "Synthetic faults: injected errors, a load surge and a deliberately crashing release; real incidents are messier.",
+      "Compressed time: the demo alerting profile detects in tens of seconds instead of the minutes to hours of the production profile, and budgets are accounted over 1 hour.",
+      "Human approval latency is excluded: rollbacks need approval and the harness approves them immediately.",
+      "The control mode (none) ends after a fixed time, so its time to mitigate is censored by design unless the fault clears by itself.",
+      "LLM results depend on the model and prompt version recorded with the run; a different model may behave differently."
+    ]
+  },
+  "by_scenario_and_mode": {
+    "crash_loop": {
+      "none": {
+        "n": 1,
+        "errors": 0,
+        "detected": {
+          "rate": 1.0,
+          "count": 1,
+          "n": 1
+        },
+        "time_to_detect_s": {
+          "mean": 16.7,
+          "min": 16.7,
+          "max": 16.7,
+          "n": 1
+        },
+        "time_to_mitigate_s": null,
+        "mitigate_censored": 1,
+        "error_budget_consumed_pct": {
+          "mean": 125.0,
+          "min": 125.0,
+          "max": 125.0,
+          "n": 1
+        },
+        "diagnosis_accuracy": null,
+        "root_cause_accuracy": null,
+        "correct_action_rate": null,
+        "recovery_success_rate": null,
+        "unsafe_actions_blocked": 0,
+        "wrong_actions_executed": 0,
+        "degraded_runs": 0,
+        "llm_calls": 0,
+        "llm_tokens_in": 0,
+        "llm_tokens_out": 0,
+        "llm_latency_ms": null
+      },
+      "rules": {
+        "n": 1,
+        "errors": 0,
+        "detected": {
+          "rate": 1.0,
+          "count": 1,
+          "n": 1
+        },
+        "time_to_detect_s": {
+          "mean": 7.2,
+          "min": 7.2,
+          "max": 7.2,
+          "n": 1
+        },
+        "time_to_mitigate_s": {
+          "mean": 73.7,
+          "min": 73.7,
+          "max": 73.7,
+          "n": 1
+        },
+        "mitigate_censored": 0,
+        "error_budget_consumed_pct": {
+          "mean": 14.6,
+          "min": 14.6,
+          "max": 14.6,
+          "n": 1
+        },
+        "diagnosis_accuracy": {
+          "rate": 1.0,
+          "count": 1,
+          "n": 1
+        },
+        "root_cause_accuracy": {
+          "rate": 1.0,
+          "count": 1,
+          "n": 1
+        },
+        "correct_action_rate": {
+          "rate": 1.0,
+          "count": 1,
+          "n": 1
+        },
+        "recovery_success_rate": {
+          "rate": 1.0,
+          "count": 1,
+          "n": 1
+        },
+        "unsafe_actions_blocked": 0,
+        "wrong_actions_executed": 0,
+        "degraded_runs": 0,
+        "llm_calls": 0,
+        "llm_tokens_in": 0,
+        "llm_tokens_out": 0,
+        "llm_latency_ms": null
+      },
+      "llm": {
+        "n": 1,
+        "errors": 0,
+        "detected": {
+          "rate": 1.0,
+          "count": 1,
+          "n": 1
+        },
+        "time_to_detect_s": {
+          "mean": 8.6,
+          "min": 8.6,
+          "max": 8.6,
+          "n": 1
+        },
+        "time_to_mitigate_s": {
+          "mean": 65.2,
+          "min": 65.2,
+          "max": 65.2,
+          "n": 1
+        },
+        "mitigate_censored": 0,
+        "error_budget_consumed_pct": {
+          "mean": 24.9,
+          "min": 24.9,
+          "max": 24.9,
+          "n": 1
+        },
+        "diagnosis_accuracy": {
+          "rate": 1.0,
+          "count": 1,
+          "n": 1
+        },
+        "root_cause_accuracy": {
+          "rate": 1.0,
+          "count": 1,
+          "n": 1
+        },
+        "correct_action_rate": {
+          "rate": 1.0,
+          "count": 1,
+          "n": 1
+        },
+        "recovery_success_rate": {
+          "rate": 1.0,
+          "count": 1,
+          "n": 1
+        },
+        "unsafe_actions_blocked": 0,
+        "wrong_actions_executed": 0,
+        "degraded_runs": 0,
+        "llm_calls": 1,
+        "llm_tokens_in": 3641,
+        "llm_tokens_out": 322,
+        "llm_latency_ms": {
+          "mean": 2427.0,
+          "min": 2427.0,
+          "max": 2427.0,
+          "n": 1
+        }
+      }
+    },
+    "error_spike": {
+      "none": {
+        "n": 1,
+        "errors": 0,
+        "detected": {
+          "rate": 1.0,
+          "count": 1,
+          "n": 1
+        },
+        "time_to_detect_s": {
+          "mean": 10.7,
+          "min": 10.7,
+          "max": 10.7,
+          "n": 1
+        },
+        "time_to_mitigate_s": null,
+        "mitigate_censored": 1,
+        "error_budget_consumed_pct": {
+          "mean": 237.8,
+          "min": 237.8,
+          "max": 237.8,
+          "n": 1
+        },
+        "diagnosis_accuracy": null,
+        "root_cause_accuracy": null,
+        "correct_action_rate": null,
+        "recovery_success_rate": null,
+        "unsafe_actions_blocked": 0,
+        "wrong_actions_executed": 0,
+        "degraded_runs": 0,
+        "llm_calls": 0,
+        "llm_tokens_in": 0,
+        "llm_tokens_out": 0,
+        "llm_latency_ms": null
+      },
+      "rules": {
+        "n": 1,
+        "errors": 0,
+        "detected": {
+          "rate": 1.0,
+          "count": 1,
+          "n": 1
+        },
+        "time_to_detect_s": {
+          "mean": 10.9,
+          "min": 10.9,
+          "max": 10.9,
+          "n": 1
+        },
+        "time_to_mitigate_s": {
+          "mean": 62.4,
+          "min": 62.4,
+          "max": 62.4,
+          "n": 1
+        },
+        "mitigate_censored": 0,
+        "error_budget_consumed_pct": {
+          "mean": 45.3,
+          "min": 45.3,
+          "max": 45.3,
+          "n": 1
+        },
+        "diagnosis_accuracy": {
+          "rate": 1.0,
+          "count": 1,
+          "n": 1
+        },
+        "root_cause_accuracy": {
+          "rate": 1.0,
+          "count": 1,
+          "n": 1
+        },
+        "correct_action_rate": {
+          "rate": 1.0,
+          "count": 1,
+          "n": 1
+        },
+        "recovery_success_rate": {
+          "rate": 1.0,
+          "count": 1,
+          "n": 1
+        },
+        "unsafe_actions_blocked": 0,
+        "wrong_actions_executed": 0,
+        "degraded_runs": 0,
+        "llm_calls": 0,
+        "llm_tokens_in": 0,
+        "llm_tokens_out": 0,
+        "llm_latency_ms": null
+      },
+      "llm": {
+        "n": 1,
+        "errors": 0,
+        "detected": {
+          "rate": 1.0,
+          "count": 1,
+          "n": 1
+        },
+        "time_to_detect_s": {
+          "mean": 6.2,
+          "min": 6.2,
+          "max": 6.2,
+          "n": 1
+        },
+        "time_to_mitigate_s": {
+          "mean": 62.8,
+          "min": 62.8,
+          "max": 62.8,
+          "n": 1
+        },
+        "mitigate_censored": 0,
+        "error_budget_consumed_pct": {
+          "mean": 42.7,
+          "min": 42.7,
+          "max": 42.7,
+          "n": 1
+        },
+        "diagnosis_accuracy": {
+          "rate": 1.0,
+          "count": 1,
+          "n": 1
+        },
+        "root_cause_accuracy": {
+          "rate": 1.0,
+          "count": 1,
+          "n": 1
+        },
+        "correct_action_rate": {
+          "rate": 1.0,
+          "count": 1,
+          "n": 1
+        },
+        "recovery_success_rate": {
+          "rate": 1.0,
+          "count": 1,
+          "n": 1
+        },
+        "unsafe_actions_blocked": 0,
+        "wrong_actions_executed": 0,
+        "degraded_runs": 0,
+        "llm_calls": 1,
+        "llm_tokens_in": 4465,
+        "llm_tokens_out": 278,
+        "llm_latency_ms": {
+          "mean": 1837.0,
+          "min": 1837.0,
+          "max": 1837.0,
+          "n": 1
+        }
+      }
+    },
+    "latency_saturation": {
+      "none": {
+        "n": 1,
+        "errors": 0,
+        "detected": {
+          "rate": 1.0,
+          "count": 1,
+          "n": 1
+        },
+        "time_to_detect_s": {
+          "mean": 11.0,
+          "min": 11.0,
+          "max": 11.0,
+          "n": 1
+        },
+        "time_to_mitigate_s": null,
+        "mitigate_censored": 1,
+        "error_budget_consumed_pct": {
+          "mean": 1022.3,
+          "min": 1022.3,
+          "max": 1022.3,
+          "n": 1
+        },
+        "diagnosis_accuracy": null,
+        "root_cause_accuracy": null,
+        "correct_action_rate": null,
+        "recovery_success_rate": null,
+        "unsafe_actions_blocked": 0,
+        "wrong_actions_executed": 0,
+        "degraded_runs": 0,
+        "llm_calls": 0,
+        "llm_tokens_in": 0,
+        "llm_tokens_out": 0,
+        "llm_latency_ms": null
+      },
+      "rules": {
+        "n": 1,
+        "errors": 0,
+        "detected": {
+          "rate": 1.0,
+          "count": 1,
+          "n": 1
+        },
+        "time_to_detect_s": {
+          "mean": 9.1,
+          "min": 9.1,
+          "max": 9.1,
+          "n": 1
+        },
+        "time_to_mitigate_s": {
+          "mean": 55.6,
+          "min": 55.6,
+          "max": 55.6,
+          "n": 1
+        },
+        "mitigate_censored": 0,
+        "error_budget_consumed_pct": {
+          "mean": 152.5,
+          "min": 152.5,
+          "max": 152.5,
+          "n": 1
+        },
+        "diagnosis_accuracy": {
+          "rate": 1.0,
+          "count": 1,
+          "n": 1
+        },
+        "root_cause_accuracy": {
+          "rate": 1.0,
+          "count": 1,
+          "n": 1
+        },
+        "correct_action_rate": {
+          "rate": 1.0,
+          "count": 1,
+          "n": 1
+        },
+        "recovery_success_rate": {
+          "rate": 1.0,
+          "count": 1,
+          "n": 1
+        },
+        "unsafe_actions_blocked": 0,
+        "wrong_actions_executed": 0,
+        "degraded_runs": 0,
+        "llm_calls": 0,
+        "llm_tokens_in": 0,
+        "llm_tokens_out": 0,
+        "llm_latency_ms": null
+      },
+      "llm": {
+        "n": 1,
+        "errors": 0,
+        "detected": {
+          "rate": 1.0,
+          "count": 1,
+          "n": 1
+        },
+        "time_to_detect_s": {
+          "mean": 10.4,
+          "min": 10.4,
+          "max": 10.4,
+          "n": 1
+        },
+        "time_to_mitigate_s": {
+          "mean": 61.9,
+          "min": 61.9,
+          "max": 61.9,
+          "n": 1
+        },
+        "mitigate_censored": 0,
+        "error_budget_consumed_pct": {
+          "mean": 171.9,
+          "min": 171.9,
+          "max": 171.9,
+          "n": 1
+        },
+        "diagnosis_accuracy": {
+          "rate": 1.0,
+          "count": 1,
+          "n": 1
+        },
+        "root_cause_accuracy": {
+          "rate": 1.0,
+          "count": 1,
+          "n": 1
+        },
+        "correct_action_rate": {
+          "rate": 1.0,
+          "count": 1,
+          "n": 1
+        },
+        "recovery_success_rate": {
+          "rate": 1.0,
+          "count": 1,
+          "n": 1
+        },
+        "unsafe_actions_blocked": 0,
+        "wrong_actions_executed": 0,
+        "degraded_runs": 0,
+        "llm_calls": 2,
+        "llm_tokens_in": 7442,
+        "llm_tokens_out": 549,
+        "llm_latency_ms": {
+          "mean": 2695.0,
+          "min": 2695.0,
+          "max": 2695.0,
+          "n": 1
+        }
+      }
+    }
+  },
+  "by_mode": {
+    "none": {
+      "n": 3,
+      "errors": 0,
+      "detected": {
+        "rate": 1.0,
+        "count": 3,
+        "n": 3
+      },
+      "time_to_detect_s": {
+        "mean": 12.8,
+        "min": 10.7,
+        "max": 16.7,
+        "n": 3
+      },
+      "time_to_mitigate_s": null,
+      "mitigate_censored": 3,
+      "error_budget_consumed_pct": {
+        "mean": 461.7,
+        "min": 125.0,
+        "max": 1022.3,
+        "n": 3
+      },
+      "diagnosis_accuracy": null,
+      "root_cause_accuracy": null,
+      "correct_action_rate": null,
+      "recovery_success_rate": null,
+      "unsafe_actions_blocked": 0,
+      "wrong_actions_executed": 0,
+      "degraded_runs": 0,
+      "llm_calls": 0,
+      "llm_tokens_in": 0,
+      "llm_tokens_out": 0,
+      "llm_latency_ms": null
+    },
+    "rules": {
+      "n": 3,
+      "errors": 0,
+      "detected": {
+        "rate": 1.0,
+        "count": 3,
+        "n": 3
+      },
+      "time_to_detect_s": {
+        "mean": 9.1,
+        "min": 7.2,
+        "max": 10.9,
+        "n": 3
+      },
+      "time_to_mitigate_s": {
+        "mean": 63.9,
+        "min": 55.6,
+        "max": 73.7,
+        "n": 3
+      },
+      "mitigate_censored": 0,
+      "error_budget_consumed_pct": {
+        "mean": 70.8,
+        "min": 14.6,
+        "max": 152.5,
+        "n": 3
+      },
+      "diagnosis_accuracy": {
+        "rate": 1.0,
+        "count": 3,
+        "n": 3
+      },
+      "root_cause_accuracy": {
+        "rate": 1.0,
+        "count": 3,
+        "n": 3
+      },
+      "correct_action_rate": {
+        "rate": 1.0,
+        "count": 3,
+        "n": 3
+      },
+      "recovery_success_rate": {
+        "rate": 1.0,
+        "count": 3,
+        "n": 3
+      },
+      "unsafe_actions_blocked": 0,
+      "wrong_actions_executed": 0,
+      "degraded_runs": 0,
+      "llm_calls": 0,
+      "llm_tokens_in": 0,
+      "llm_tokens_out": 0,
+      "llm_latency_ms": null
+    },
+    "llm": {
+      "n": 3,
+      "errors": 0,
+      "detected": {
+        "rate": 1.0,
+        "count": 3,
+        "n": 3
+      },
+      "time_to_detect_s": {
+        "mean": 8.4,
+        "min": 6.2,
+        "max": 10.4,
+        "n": 3
+      },
+      "time_to_mitigate_s": {
+        "mean": 63.3,
+        "min": 61.9,
+        "max": 65.2,
+        "n": 3
+      },
+      "mitigate_censored": 0,
+      "error_budget_consumed_pct": {
+        "mean": 79.8,
+        "min": 24.9,
+        "max": 171.9,
+        "n": 3
+      },
+      "diagnosis_accuracy": {
+        "rate": 1.0,
+        "count": 3,
+        "n": 3
+      },
+      "root_cause_accuracy": {
+        "rate": 1.0,
+        "count": 3,
+        "n": 3
+      },
+      "correct_action_rate": {
+        "rate": 1.0,
+        "count": 3,
+        "n": 3
+      },
+      "recovery_success_rate": {
+        "rate": 1.0,
+        "count": 3,
+        "n": 3
+      },
+      "unsafe_actions_blocked": 0,
+      "wrong_actions_executed": 0,
+      "degraded_runs": 0,
+      "llm_calls": 4,
+      "llm_tokens_in": 15548,
+      "llm_tokens_out": 1149,
+      "llm_latency_ms": {
+        "mean": 2319.7,
+        "min": 1837.0,
+        "max": 2695.0,
+        "n": 3
+      }
+    }
+  },
+  "runs": [
+    {
+      "scenario": "crash_loop",
+      "mode": "none",
+      "run": 1,
+      "started_at": "2026-11-13T07:36:51+00:00",
+      "t_inject": 1794555486.7,
+      "duration_s": 225.8,
+      "error": null,
+      "detected": true,
+      "time_to_detect_s": 16.7,
+      "time_to_mitigate_s": null,
+      "mitigate_censored": true,
+      "error_budget_consumed_pct": 125.0,
+      "incident_ids": [
+        "INC-20261113-019"
+      ],
+      "primary_incident": "INC-20261113-019",
+      "final_state": null,
+      "diagnosed_category": null,
+      "diagnosed_root_cause": null,
+      "proposed_action": null,
+      "diagnosis_correct": null,
+      "root_cause_correct": null,
+      "action_correct": null,
+      "degraded_mode": false,
+      "actions_executed": [],
+      "wrong_actions_executed": 0,
+      "unsafe_actions_blocked": 0,
+      "approvals_given": 0,
+      "recovery_verified": null,
+      "llm_calls": 0,
+      "llm_tokens_in": 0,
+      "llm_tokens_out": 0,
+      "llm_latency_ms": null,
+      "llm_model": null
+    },
+    {
+      "scenario": "error_spike",
+      "mode": "none",
+      "run": 1,
+      "started_at": "2026-11-13T07:40:40+00:00",
+      "t_inject": 1794555797.8,
+      "duration_s": 308.1,
+      "error": null,
+      "detected": true,
+      "time_to_detect_s": 10.7,
+      "time_to_mitigate_s": null,
+      "mitigate_censored": true,
+      "error_budget_consumed_pct": 237.8,
+      "incident_ids": [
+        "INC-20261113-020",
+        "INC-20261113-021"
+      ],
+      "primary_incident": "INC-20261113-020",
+      "final_state": null,
+      "diagnosed_category": null,
+      "diagnosed_root_cause": null,
+      "proposed_action": null,
+      "diagnosis_correct": null,
+      "root_cause_correct": null,
+      "action_correct": null,
+      "degraded_mode": false,
+      "actions_executed": [],
+      "wrong_actions_executed": 0,
+      "unsafe_actions_blocked": 0,
+      "approvals_given": 0,
+      "recovery_verified": null,
+      "llm_calls": 0,
+      "llm_tokens_in": 0,
+      "llm_tokens_out": 0,
+      "llm_latency_ms": null,
+      "llm_model": null
+    },
+    {
+      "scenario": "latency_saturation",
+      "mode": "none",
+      "run": 1,
+      "started_at": "2026-11-13T07:45:48+00:00",
+      "t_inject": 1794556102.4,
+      "duration_s": 304.5,
+      "error": null,
+      "detected": true,
+      "time_to_detect_s": 11.0,
+      "time_to_mitigate_s": null,
+      "mitigate_censored": true,
+      "error_budget_consumed_pct": 1022.3,
+      "incident_ids": [
+        "INC-20261113-022",
+        "INC-20261113-023"
+      ],
+      "primary_incident": "INC-20261113-022",
+      "final_state": null,
+      "diagnosed_category": null,
+      "diagnosed_root_cause": null,
+      "proposed_action": null,
+      "diagnosis_correct": null,
+      "root_cause_correct": null,
+      "action_correct": null,
+      "degraded_mode": false,
+      "actions_executed": [],
+      "wrong_actions_executed": 0,
+      "unsafe_actions_blocked": 0,
+      "approvals_given": 0,
+      "recovery_verified": null,
+      "llm_calls": 0,
+      "llm_tokens_in": 0,
+      "llm_tokens_out": 0,
+      "llm_latency_ms": null,
+      "llm_model": null
+    },
+    {
+      "scenario": "crash_loop",
+      "mode": "rules",
+      "run": 1,
+      "started_at": "2026-11-13T07:50:52+00:00",
+      "t_inject": 1794556411.3,
+      "duration_s": 287.7,
+      "error": null,
+      "detected": true,
+      "time_to_detect_s": 7.2,
+      "time_to_mitigate_s": 73.7,
+      "mitigate_censored": false,
+      "error_budget_consumed_pct": 14.6,
+      "incident_ids": [
+        "INC-20261113-024"
+      ],
+      "primary_incident": "INC-20261113-024",
+      "final_state": "RESOLVED",
+      "diagnosed_category": "CRASH_LOOP",
+      "diagnosed_root_cause": "orders",
+      "proposed_action": "rollback_service",
+      "diagnosis_correct": true,
+      "root_cause_correct": true,
+      "action_correct": true,
+      "degraded_mode": false,
+      "actions_executed": [
+        "rollback_service:orders"
+      ],
+      "wrong_actions_executed": 0,
+      "unsafe_actions_blocked": 0,
+      "approvals_given": 1,
+      "recovery_verified": true,
+      "llm_calls": 0,
+      "llm_tokens_in": 0,
+      "llm_tokens_out": 0,
+      "llm_latency_ms": null,
+      "llm_model": null
+    },
+    {
+      "scenario": "error_spike",
+      "mode": "rules",
+      "run": 1,
+      "started_at": "2026-11-13T07:55:40+00:00",
+      "t_inject": 1794556697.6,
+      "duration_s": 290.8,
+      "error": null,
+      "detected": true,
+      "time_to_detect_s": 10.9,
+      "time_to_mitigate_s": 62.4,
+      "mitigate_censored": false,
+      "error_budget_consumed_pct": 45.3,
+      "incident_ids": [
+        "INC-20261113-027",
+        "INC-20261113-028"
+      ],
+      "primary_incident": "INC-20261113-027",
+      "final_state": "RESOLVED",
+      "diagnosed_category": "ERROR_SPIKE",
+      "diagnosed_root_cause": "orders",
+      "proposed_action": "restart_service",
+      "diagnosis_correct": true,
+      "root_cause_correct": true,
+      "action_correct": true,
+      "degraded_mode": false,
+      "actions_executed": [
+        "restart_service:orders"
+      ],
+      "wrong_actions_executed": 0,
+      "unsafe_actions_blocked": 0,
+      "approvals_given": 0,
+      "recovery_verified": true,
+      "llm_calls": 0,
+      "llm_tokens_in": 0,
+      "llm_tokens_out": 0,
+      "llm_latency_ms": null,
+      "llm_model": null
+    },
+    {
+      "scenario": "latency_saturation",
+      "mode": "rules",
+      "run": 1,
+      "started_at": "2026-11-13T08:00:31+00:00",
+      "t_inject": 1794556939.4,
+      "duration_s": 235.3,
+      "error": null,
+      "detected": true,
+      "time_to_detect_s": 9.1,
+      "time_to_mitigate_s": 55.6,
+      "mitigate_censored": false,
+      "error_budget_consumed_pct": 152.5,
+      "incident_ids": [
+        "INC-20261113-029",
+        "INC-20261113-030"
+      ],
+      "primary_incident": "INC-20261113-029",
+      "final_state": "RESOLVED",
+      "diagnosed_category": "LOAD_SATURATION",
+      "diagnosed_root_cause": "orders",
+      "proposed_action": "scale_service",
+      "diagnosis_correct": true,
+      "root_cause_correct": true,
+      "action_correct": true,
+      "degraded_mode": false,
+      "actions_executed": [
+        "scale_service:orders"
+      ],
+      "wrong_actions_executed": 0,
+      "unsafe_actions_blocked": 0,
+      "approvals_given": 0,
+      "recovery_verified": true,
+      "llm_calls": 0,
+      "llm_tokens_in": 0,
+      "llm_tokens_out": 0,
+      "llm_latency_ms": null,
+      "llm_model": null
+    },
+    {
+      "scenario": "crash_loop",
+      "mode": "llm",
+      "run": 1,
+      "started_at": "2026-11-13T08:04:27+00:00",
+      "t_inject": 1794557139.8,
+      "duration_s": 208.0,
+      "error": null,
+      "detected": true,
+      "time_to_detect_s": 8.6,
+      "time_to_mitigate_s": 65.2,
+      "mitigate_censored": false,
+      "error_budget_consumed_pct": 24.9,
+      "incident_ids": [
+        "INC-20261113-031"
+      ],
+      "primary_incident": "INC-20261113-031",
+      "final_state": "RESOLVED",
+      "diagnosed_category": "CRASH_LOOP",
+      "diagnosed_root_cause": "orders",
+      "proposed_action": "rollback_service",
+      "diagnosis_correct": true,
+      "root_cause_correct": true,
+      "action_correct": true,
+      "degraded_mode": false,
+      "actions_executed": [
+        "rollback_service:orders"
+      ],
+      "wrong_actions_executed": 0,
+      "unsafe_actions_blocked": 0,
+      "approvals_given": 1,
+      "recovery_verified": true,
+      "llm_calls": 1,
+      "llm_tokens_in": 3641,
+      "llm_tokens_out": 322,
+      "llm_latency_ms": 2427.0,
+      "llm_model": "gemini-3.5-flash-lite"
+    },
+    {
+      "scenario": "error_spike",
+      "mode": "llm",
+      "run": 1,
+      "started_at": "2026-11-13T08:07:55+00:00",
+      "t_inject": 1794557432.2,
+      "duration_s": 299.5,
+      "error": null,
+      "detected": true,
+      "time_to_detect_s": 6.2,
+      "time_to_mitigate_s": 62.8,
+      "mitigate_censored": false,
+      "error_budget_consumed_pct": 42.7,
+      "incident_ids": [
+        "INC-20261113-033",
+        "INC-20261113-034"
+      ],
+      "primary_incident": "INC-20261113-033",
+      "final_state": "RESOLVED",
+      "diagnosed_category": "ERROR_SPIKE",
+      "diagnosed_root_cause": "orders",
+      "proposed_action": "restart_service",
+      "diagnosis_correct": true,
+      "root_cause_correct": true,
+      "action_correct": true,
+      "degraded_mode": false,
+      "actions_executed": [
+        "restart_service:orders"
+      ],
+      "wrong_actions_executed": 0,
+      "unsafe_actions_blocked": 0,
+      "approvals_given": 0,
+      "recovery_verified": true,
+      "llm_calls": 1,
+      "llm_tokens_in": 4465,
+      "llm_tokens_out": 278,
+      "llm_latency_ms": 1837.0,
+      "llm_model": "gemini-3.5-flash-lite"
+    },
+    {
+      "scenario": "latency_saturation",
+      "mode": "llm",
+      "run": 1,
+      "started_at": "2026-11-13T08:12:54+00:00",
+      "t_inject": 1794557753.1,
+      "duration_s": 318.1,
+      "error": null,
+      "detected": true,
+      "time_to_detect_s": 10.4,
+      "time_to_mitigate_s": 61.9,
+      "mitigate_censored": false,
+      "error_budget_consumed_pct": 171.9,
+      "incident_ids": [
+        "INC-20261113-035",
+        "INC-20261113-036"
+      ],
+      "primary_incident": "INC-20261113-035",
+      "final_state": "RESOLVED",
+      "diagnosed_category": "LOAD_SATURATION",
+      "diagnosed_root_cause": "orders",
+      "proposed_action": "scale_service",
+      "diagnosis_correct": true,
+      "root_cause_correct": true,
+      "action_correct": true,
+      "degraded_mode": false,
+      "actions_executed": [
+        "scale_service:orders"
+      ],
+      "wrong_actions_executed": 0,
+      "unsafe_actions_blocked": 0,
+      "approvals_given": 0,
+      "recovery_verified": true,
+      "llm_calls": 2,
+      "llm_tokens_in": 7442,
+      "llm_tokens_out": 549,
+      "llm_latency_ms": 2695.0,
+      "llm_model": "gemini-3.5-flash-lite"
+    }
+  ]
+}

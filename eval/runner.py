@@ -35,7 +35,7 @@ from tools.deploy.run import EventRecorder, current_version, deploy, write_versi
 BASE_RPS = 20.0
 POLL_S = 2.0
 SETTLE_S = 30.0
-MAX_SETTLE_S = 900.0
+MAX_SETTLE_S = 1200.0
 OBSERVE_AFTER_S = 45.0
 BASELINE_LOOKBACK_FACTOR = 1.5
 STEP_S = 5
@@ -44,7 +44,9 @@ GATEWAY_BURN = 'max(slo:burn_rate:ratio_30s{service="gateway"})'
 # The fast-burn page looks at 2 minutes. If errors from an earlier run (or from
 # the cleanup itself) are still inside that window, the next fault is detected
 # sooner than it would be from a clean state, which would flatter the numbers.
-LONG_WINDOW_BURN = "max(slo:burn_rate:ratio_2m)"
+# (Found the hard way: two earlier evaluation runs were discarded for this.)
+# Both page alerts are covered: fast burn (2 m window) and slow burn (6 m window).
+LONG_WINDOW_BURNS = ("max(slo:burn_rate:ratio_2m)", "max(slo:burn_rate:ratio_6m)")
 TERMINAL = {"RESOLVED", "ESCALATED", "REJECTED", "DRY_RUN_COMPLETE", "OBSERVED"}
 AGENT_MODES: dict[Mode, tuple[str, str]] = {
     "none": ("observe", "rules"),
@@ -254,7 +256,7 @@ def settle(system: Stack, log: Log, max_settle_s: float = MAX_SETTLE_S) -> float
     """Wait until the system has been quiet for `SETTLE_S`; return how long that took.
 
     Quiet means: no page alert firing, the gateway within its objectives, the
-    2-minute alert windows of every SLO clean (see LONG_WINDOW_BURN), and the
+    long windows of both page alerts clean for every SLO (see LONG_WINDOW_BURNS), and the
     request rate of 10 minutes ago back at baseline (the agent compares load with
     that moment, so an earlier surge must have left its look-back).
     """
@@ -262,7 +264,7 @@ def settle(system: Stack, log: Log, max_settle_s: float = MAX_SETTLE_S) -> float
     quiet_since: float | None = None
     while time.time() - started < max_settle_s:
         burn = system.query(GATEWAY_BURN)
-        long_burn = system.query(LONG_WINDOW_BURN)
+        long_burns = [system.query(expr) for expr in LONG_WINDOW_BURNS]
         lookback = system.query(
             f'sum(rate(http_requests_total{{service="orders", {API}}}[1m] offset 10m))'
         )
@@ -270,8 +272,7 @@ def settle(system: Stack, log: Log, max_settle_s: float = MAX_SETTLE_S) -> float
             not system.page_alerts()
             and burn is not None
             and burn <= measure.WITHIN_OBJECTIVE
-            and long_burn is not None
-            and long_burn <= measure.WITHIN_OBJECTIVE
+            and all(v is not None and v <= measure.WITHIN_OBJECTIVE for v in long_burns)
             and (lookback is None or lookback < BASELINE_LOOKBACK_FACTOR * BASE_RPS)
         )
         now = time.time()
@@ -302,9 +303,10 @@ def run_one(scenario: Scenario, mode: Mode, system: Stack, log: Log, run: int = 
         limit = scenario.control_duration_s if mode == "none" else scenario.max_duration_s
         finished_at: float | None = None
         while time.time() - t_inject < limit + OBSERVE_AFTER_S:
-            for key, active in system.page_alerts().items():
-                if active >= t_inject - 1:
-                    alert_times.setdefault(key, active)
+            # Detection is the moment a page alert is first *seen firing* (after its
+            # `for` duration), not when it became pending; resolution is one poll.
+            for key in system.page_alerts():
+                alert_times.setdefault(key, time.time())
             if mode != "none":
                 details = system.incidents_since(t_inject)
                 approvals += system.approve_pending({d["incident"]["id"] for d in details})
