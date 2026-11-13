@@ -121,9 +121,11 @@ histogram buckets, so it is coarse.
 
 Consequences for the fault scenarios:
 
-- The load-saturation scenario uses a **150 rps** surge (the plan suggested
-  180 as an example). At 150 rps one replica is clearly saturated and two
-  replicas are healthy, so the agent's "scale +1" action is enough to recover.
+- A **150 rps** surge clearly saturates one replica and is healthy on two, so
+  the agent's "scale +1" action is enough to recover. The evaluation scenario
+  (`eval/scenarios/latency_saturation.yaml`) now uses **130 rps**, which is
+  still above the measured single-replica capacity of about 89 rps; the first
+  evaluation run used 150 rps (see `docs/results/README.md`).
 - Under saturation most errors are 502 (orders shedding load with 503), not
   504 timeouts, because requests are shed after 1.5 s, before the gateway's
   2 s timeout.
