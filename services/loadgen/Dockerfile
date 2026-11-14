@@ -1,12 +1,12 @@
 # syntax=docker/dockerfile:1
 # Build context: repository root.
-FROM python:3.12.16-slim AS builder
+FROM python:3.15.0-slim AS builder
 ENV PIP_NO_CACHE_DIR=1 PIP_DISABLE_PIP_VERSION_CHECK=1
 RUN python -m venv /opt/venv
 COPY services/loadgen/requirements.txt /tmp/requirements.txt
 RUN /opt/venv/bin/pip install -r /tmp/requirements.txt
 
-FROM python:3.12.16-slim
+FROM python:3.15.0-slim
 ARG RELEASE_VERSION=dev
 ENV PATH=/opt/venv/bin:$PATH \
     PYTHONUNBUFFERED=1 \
